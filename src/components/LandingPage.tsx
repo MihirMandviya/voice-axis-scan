@@ -1,15 +1,13 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Upload, BarChart3, Users, Zap, Shield, ArrowRight, Play } from "lucide-react";
+import { CheckCircle, Upload, BarChart3, Users, Zap, Shield, ArrowRight } from "lucide-react";
 
 interface LandingPageProps {
   onGetStarted: () => void;
 }
 
 export default function LandingPage({ onGetStarted }: LandingPageProps) {
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   const features = [
     {
@@ -78,7 +76,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 Upload call recordings from Google Drive and get detailed analysis reports 
                 with sentiment scoring, engagement metrics, and actionable insights to boost your team's performance.
               </p>
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex justify-start">
                 <Button 
                   size="xl" 
                   variant="accent" 
@@ -87,15 +85,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 >
                   Get Started Free
                   <ArrowRight className="h-5 w-5" />
-                </Button>
-                <Button 
-                  size="xl" 
-                  variant="outline"
-                  className="border-accent-blue text-accent-blue hover:bg-accent-blue hover:text-white shadow-lg"
-                  onClick={() => setIsVideoPlaying(true)}
-                >
-                  <Play className="h-5 w-5" />
-                  Watch Demo
                 </Button>
               </div>
             </div>
@@ -201,13 +190,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <p className="text-xl text-muted-foreground mb-8">
             Start analyzing your call recordings today and unlock insights that drive results.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex justify-center">
             <Button size="xl" variant="accent" onClick={onGetStarted}>
               Start Free Trial
               <ArrowRight className="h-5 w-5" />
-            </Button>
-            <Button size="xl" variant="outline">
-              Schedule Demo
             </Button>
           </div>
           <p className="text-sm text-muted-foreground mt-6">
