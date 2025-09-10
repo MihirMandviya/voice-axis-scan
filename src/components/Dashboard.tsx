@@ -1,111 +1,145 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle } from "lucide-react";
-
-// Mock data for the dashboard
-const kpiData = {
-  totalCalls: 156,
-  avgSentiment: 0.72,
-  avgEngagement: 0.85,
-  objections: 23,
-  conversionRate: 0.34,
-  avgConfidence: 0.91
-};
-
-const sentimentData = [
-  { name: 'Positive', value: 68, color: 'hsl(var(--success))' },
-  { name: 'Neutral', value: 52, color: 'hsl(var(--accent-blue))' },
-  { name: 'Negative', value: 36, color: 'hsl(var(--warning))' }
-];
-
-const trendData = [
-  { date: 'Mon', sentiment: 0.65, engagement: 0.78 },
-  { date: 'Tue', sentiment: 0.72, engagement: 0.82 },
-  { date: 'Wed', sentiment: 0.69, engagement: 0.75 },
-  { date: 'Thu', sentiment: 0.75, engagement: 0.89 },
-  { date: 'Fri', sentiment: 0.78, engagement: 0.91 },
-  { date: 'Sat', sentiment: 0.73, engagement: 0.85 },
-  { date: 'Sun', sentiment: 0.76, engagement: 0.88 }
-];
-
-const engagementData = [
-  { level: 'High', count: 89 },
-  { level: 'Medium', count: 45 },
-  { level: 'Low', count: 22 }
-];
-
-const objectionData = [
-  { category: 'Price', count: 12 },
-  { category: 'Timeline', count: 8 },
-  { category: 'Competition', count: 6 },
-  { category: 'Authority', count: 4 },
-  { category: 'Need', count: 3 }
-];
-
-const recentCalls = [
-  {
-    id: 1,
-    name: "Sales Call - Acme Corp",
-    date: "2024-01-15",
-    duration: "24:30",
-    sentiment: 0.85,
-    engagement: 0.92,
-    status: "completed",
-    objections: 2
-  },
-  {
-    id: 2,
-    name: "Demo Call - TechStart",
-    date: "2024-01-15",
-    duration: "18:45",
-    sentiment: 0.67,
-    engagement: 0.78,
-    status: "completed",
-    objections: 4
-  },
-  {
-    id: 3,
-    name: "Follow-up - BigCorp",
-    date: "2024-01-14",
-    duration: "12:15",
-    sentiment: 0.71,
-    engagement: 0.84,
-    status: "processing",
-    objections: 1
-  },
-  {
-    id: 4,
-    name: "Discovery - StartupXYZ",
-    date: "2024-01-14",
-    duration: "31:20",
-    sentiment: 0.89,
-    engagement: 0.95,
-    status: "completed",
-    objections: 0
-  }
-];
+import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2 } from "lucide-react";
+import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } from "@/hooks/useSupabaseData";
+import AddRecordingModal from "./AddRecordingModal";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Analysis } from "@/lib/supabase";
 
 export default function Dashboard() {
   const [selectedTab, setSelectedTab] = useState("overview");
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const { data: dashboardData, isLoading, error } = useDashboardStats();
+  const { data: recordings, isLoading: recordingsLoading } = useRecordings();
+  const { data: analyses } = useAnalyses();
+  const deleteRecording = useDeleteRecording();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  
+  // Enable analysis notifications
+  useAnalysisNotifications();
+
+  // Handle tab parameter from URL
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['overview', 'recordings'].includes(tab)) {
+      setSelectedTab(tab);
+    }
+  }, [searchParams]);
 
   const getSentimentColor = (score: number) => {
-    if (score >= 0.8) return "text-success";
-    if (score >= 0.6) return "text-accent-blue";
+    if (score >= 80) return "text-success";
+    if (score >= 60) return "text-accent-blue";
     return "text-warning";
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
+      case "analyzed":
         return <Badge className="bg-success-light text-success">Completed</Badge>;
       case "processing":
+      case "in_progress":
+      case "analyzing":
         return <Badge className="bg-accent-blue-light text-accent-blue">Processing</Badge>;
+      case "transcribing":
+      case "transcribed":
+        return <Badge className="bg-purple-100 text-purple-700">Transcribing</Badge>;
+      case "queued":
+      case "pending":
+      case "uploaded":
+        return <Badge className="bg-yellow-100 text-yellow-700">Queued</Badge>;
+      case "failed":
+      case "error":
+        return <Badge className="bg-destructive-light text-destructive">Failed</Badge>;
+      case "cancelled":
+        return <Badge className="bg-gray-100 text-gray-700">Cancelled</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-blue mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="h-16 w-16 text-warning mx-auto mb-4" />
+          <p className="text-lg font-medium text-foreground">Error loading dashboard</p>
+          <p className="text-muted-foreground">{error.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!dashboardData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Phone className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg font-medium text-foreground">No data available</p>
+          <p className="text-muted-foreground">Upload some recordings to see your dashboard</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { kpiData, sentimentData, trendData, engagementData, objectionData, recentCalls } = dashboardData;
+
+  const handleRecordingAdded = () => {
+    // Invalidate and refetch all queries to refresh the dashboard
+    queryClient.invalidateQueries({ queryKey: ['recordings'] });
+    queryClient.invalidateQueries({ queryKey: ['analyses'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+  };
+
+  const handleDeleteRecording = async (recordingId: string, fileName: string) => {
+    if (window.confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+      try {
+        await deleteRecording.mutateAsync(recordingId);
+        toast({
+          title: "Success",
+          description: `"${fileName}" has been deleted successfully.`,
+        });
+      } catch (error) {
+        console.error('Delete failed:', error);
+        toast({
+          title: "Error",
+          description: `Failed to delete "${fileName}". Please try again.`,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleRecordingClick = (analysis: Analysis | null, recording: any, recordingName: string) => {
+    if (analysis && analysis.detailed_call_analysis) {
+      navigate(`/analysis/${analysis.id}`);
+    } else {
+      toast({
+        title: "No Analysis Available",
+        description: "This recording hasn't been analyzed yet or the analysis is still pending.",
+        variant: "default",
+      });
     }
   };
 
@@ -118,7 +152,12 @@ export default function Dashboard() {
             <h1 className="text-2xl font-bold text-foreground">Call Analysis Dashboard</h1>
             <p className="text-muted-foreground">Monitor and analyze your call performance</p>
           </div>
-          <Button variant="accent" size="lg" className="gap-2">
+          <Button 
+            variant="accent" 
+            size="lg" 
+            className="gap-2"
+            onClick={() => setIsAddModalOpen(true)}
+          >
             <Upload className="h-4 w-4" />
             Add Recording
           </Button>
@@ -182,7 +221,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-success">
-                      {(kpiData.avgSentiment * 100).toFixed(0)}%
+                      {kpiData.avgSentiment.toFixed(0)}%
                     </div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-success">+5%</span> from last week
@@ -197,7 +236,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-accent-blue">
-                      {(kpiData.avgEngagement * 100).toFixed(0)}%
+                      {kpiData.avgEngagement.toFixed(0)}%
                     </div>
                     <p className="text-xs text-muted-foreground">
                       <span className="text-success">+8%</span> from last week
@@ -207,13 +246,13 @@ export default function Dashboard() {
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Objections</CardTitle>
+                    <CardTitle className="text-sm font-medium">Objections Handled</CardTitle>
                     <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-warning">{kpiData.objections}</div>
+                    <div className="text-2xl font-bold text-warning">{kpiData.objectionsHandled}</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-success">-15%</span> from last month
+                      <span className="text-success">+15%</span> handling rate
                     </p>
                   </CardContent>
                 </Card>
@@ -235,15 +274,15 @@ export default function Dashboard() {
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
+                    <CardTitle className="text-sm font-medium">Exec Confidence</CardTitle>
                     <Star className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-accent-blue">
-                      {(kpiData.avgConfidence * 100).toFixed(0)}%
+                      {kpiData.avgConfidenceExecutive.toFixed(0)}%
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-success">+2%</span> from last week
+                      Person: <span className="text-success">{kpiData.avgConfidencePerson.toFixed(0)}%</span>
                     </p>
                   </CardContent>
                 </Card>
@@ -321,22 +360,30 @@ export default function Dashboard() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-8">
                           <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Sentiment</p>
+                            <p className="text-xs text-muted-foreground">Sentiment</p>
                             <p className={`font-medium ${getSentimentColor(call.sentiment)}`}>
-                              {(call.sentiment * 100).toFixed(0)}%
+                              {call.sentiment.toFixed(0)}%
                             </p>
                           </div>
                           <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Engagement</p>
+                            <p className="text-xs text-muted-foreground">Engagement</p>
                             <p className="font-medium text-accent-blue">
-                              {(call.engagement * 100).toFixed(0)}%
+                              {call.engagement.toFixed(0)}%
                             </p>
                           </div>
                           <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Objections</p>
-                            <p className="font-medium">{call.objections}</p>
+                            <p className="text-xs text-muted-foreground">Exec Conf.</p>
+                            <p className="font-medium text-success">
+                              {call.confidenceExecutive}/10
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-muted-foreground">Person Conf.</p>
+                            <p className="font-medium text-accent-blue">
+                              {call.confidencePerson}/10
+                            </p>
                           </div>
                           {getStatusBadge(call.status)}
                           <Button variant="ghost" size="icon">
@@ -352,12 +399,126 @@ export default function Dashboard() {
 
             <TabsContent value="recordings">
               <Card>
-                <CardHeader>
-                  <CardTitle>All Recordings</CardTitle>
-                  <CardDescription>Complete history of your call analyses</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <div>
+                    <CardTitle>All Recordings</CardTitle>
+                    <CardDescription>Complete history of your call recordings and analyses</CardDescription>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-2"
+                    onClick={() => setIsAddModalOpen(true)}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Add Recording
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground">Recording management interface coming soon...</p>
+                  {recordingsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue"></div>
+                      <span className="ml-2 text-muted-foreground">Loading recordings...</span>
+                    </div>
+                  ) : !recordings || recordings.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-lg font-medium text-foreground">No recordings yet</p>
+                      <p className="text-muted-foreground mb-4">Upload your first recording to get started</p>
+                      <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
+                        <Upload className="h-4 w-4" />
+                        Add Recording
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {recordings.map((recording) => {
+                        const analysis = analyses?.find(a => a.recording_id === recording.id);
+                        const hasDetailedAnalysis = analysis && analysis.detailed_call_analysis;
+                        return (
+                          <div 
+                            key={recording.id} 
+                            className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
+                              hasDetailedAnalysis 
+                                ? 'hover:bg-accent/50 cursor-pointer' 
+                                : 'opacity-75'
+                            }`}
+                            onClick={() => handleRecordingClick(analysis, recording, recording.file_name || 'Unnamed Recording')}
+                          >
+                            <div className="flex items-center space-x-4">
+                              <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+                                <Play className="h-4 w-4" />
+                              </Button>
+                              <div>
+                                <h4 className="font-medium flex items-center gap-2">
+                                  {recording.file_name || 'Unnamed Recording'}
+                                  {hasDetailedAnalysis && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Click for details
+                                    </Badge>
+                                  )}
+                                </h4>
+                                <p className="text-sm text-muted-foreground">
+                                  {new Date(recording.created_at).toLocaleDateString()} • 
+                                  {recording.duration_seconds ? ` ${Math.floor(recording.duration_seconds / 60)}:${(recording.duration_seconds % 60).toString().padStart(2, '0')}` : ' Duration unknown'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-6">
+                              {analysis ? (
+                                <>
+                                  <div className="text-center">
+                                    <p className="text-xs text-muted-foreground">Sentiment</p>
+                                    <p className={`font-medium ${getSentimentColor(analysis.sentiment_score || 0)}`}>
+                                      {analysis.sentiment_score || 0}%
+                                    </p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-xs text-muted-foreground">Engagement</p>
+                                    <p className="font-medium text-accent-blue">
+                                      {analysis.engagement_score || 0}%
+                                    </p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-xs text-muted-foreground">Exec Conf.</p>
+                                    <p className="font-medium text-success">
+                                      {analysis.confidence_score_executive || 0}/10
+                                    </p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-xs text-muted-foreground">Person Conf.</p>
+                                    <p className="font-medium text-accent-blue">
+                                      {analysis.confidence_score_person || 0}/10
+                                    </p>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="text-center">
+                                  <p className="text-sm text-muted-foreground">Analysis pending...</p>
+                                </div>
+                              )}
+                              {getStatusBadge(recording.status || 'unknown')}
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteRecording(recording.id, recording.file_name || 'Unnamed Recording');
+                                }}
+                                disabled={deleteRecording.isPending}
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -384,8 +545,8 @@ export default function Dashboard() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Objection Categories</CardTitle>
-                    <CardDescription>Most common objection types</CardDescription>
+                    <CardTitle>Objection Handling Analysis</CardTitle>
+                    <CardDescription>Types of objections successfully handled</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
@@ -404,6 +565,13 @@ export default function Dashboard() {
           </Tabs>
         </main>
       </div>
+      
+      {/* Add Recording Modal */}
+      <AddRecordingModal
+        open={isAddModalOpen}
+        onOpenChange={setIsAddModalOpen}
+        onRecordingAdded={handleRecordingAdded}
+      />
     </div>
   );
 }
