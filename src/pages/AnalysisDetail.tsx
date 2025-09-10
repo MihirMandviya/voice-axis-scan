@@ -102,9 +102,19 @@ export default function AnalysisDetail() {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Recordings
             </Button>
+            <img 
+              src="/logo.png" 
+              alt="Tasknova" 
+              className="h-8 w-auto"
+              onError={(e) => {
+                e.currentTarget.src = "/logo2.png";
+              }}
+            />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Call Analysis Details</h1>
-              <p className="text-muted-foreground">{recording.file_name || 'Recording'}</p>
+              <p className="text-muted-foreground">
+                <span className="font-semibold text-accent-blue">Tasknova</span> Voice Analysis • {recording.file_name || 'Recording'}
+              </p>
             </div>
           </div>
         </div>

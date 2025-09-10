@@ -148,9 +148,19 @@ export default function Dashboard() {
       {/* Header */}
       <header className="border-b bg-card px-6 py-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Call Analysis Dashboard</h1>
-            <p className="text-muted-foreground">Monitor and analyze your call performance</p>
+          <div className="flex items-center space-x-4">
+            <img 
+              src="/logo.png" 
+              alt="Tasknova" 
+              className="h-10 w-auto"
+              onError={(e) => {
+                e.currentTarget.src = "/logo2.png";
+              }}
+            />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Voice Axis Scan</h1>
+              <p className="text-muted-foreground">by <span className="font-semibold text-accent-blue">Tasknova</span> - AI-powered call analysis</p>
+            </div>
           </div>
           <Button 
             variant="accent" 

@@ -51,18 +51,30 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-primary via-primary-hover to-accent-blue px-6 py-20 text-white">
+      <section className="relative bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 px-6 py-20 text-gray-900">
         <div className="mx-auto max-w-6xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <Badge className="mb-6 bg-white/20 text-white border-white/30">
-                AI-Powered Call Analysis
-              </Badge>
+              <div className="flex items-center mb-6">
+                <img 
+                  src="/logo2.png" 
+                  alt="Tasknova" 
+                  className="h-12 w-auto mr-4"
+                  onError={(e) => {
+                    e.currentTarget.src = "/logo.png";
+                  }}
+                />
+                <Badge className="bg-accent-blue/10 text-accent-blue border-accent-blue/20">
+                  AI-Powered Call Analysis
+                </Badge>
+              </div>
               <h1 className="text-5xl font-bold leading-tight mb-6">
+                <span className="text-accent-blue">Tasknova</span> Voice Axis Scan
+                <br />
                 Transform Your Call Performance with 
-                <span className="text-accent-blue-light"> AI Insights</span>
+                <span className="text-accent-blue"> AI Insights</span>
               </h1>
-              <p className="text-xl text-white/90 mb-8 leading-relaxed">
+              <p className="text-xl text-gray-700 mb-8 leading-relaxed">
                 Upload call recordings from Google Drive and get detailed analysis reports 
                 with sentiment scoring, engagement metrics, and actionable insights to boost your team's performance.
               </p>
@@ -71,15 +83,15 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   size="xl" 
                   variant="accent" 
                   onClick={onGetStarted}
-                  className="bg-white text-primary hover:bg-white/90"
+                  className="bg-accent-blue text-white hover:bg-accent-blue/90 shadow-lg"
                 >
                   Get Started Free
                   <ArrowRight className="h-5 w-5" />
                 </Button>
                 <Button 
                   size="xl" 
-                  variant="accent-outline"
-                  className="border-white text-white hover:bg-white hover:text-primary"
+                  variant="outline"
+                  className="border-accent-blue text-accent-blue hover:bg-accent-blue hover:text-white shadow-lg"
                   onClick={() => setIsVideoPlaying(true)}
                 >
                   <Play className="h-5 w-5" />
@@ -89,18 +101,18 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             </div>
             
             <div className="relative">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-gray-200 shadow-xl">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="h-3 w-3 rounded-full bg-success"></div>
-                    <div className="text-sm">Live Analysis</div>
+                    <div className="text-sm text-gray-600">Live Analysis</div>
                   </div>
                   <div className="space-y-3">
-                    <div className="h-4 bg-white/20 rounded animate-pulse"></div>
-                    <div className="h-4 bg-white/20 rounded w-3/4 animate-pulse"></div>
-                    <div className="h-4 bg-white/20 rounded w-1/2 animate-pulse"></div>
+                    <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
                   </div>
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm text-gray-700 font-medium">
                     <span>Sentiment: 89%</span>
                     <span>Engagement: 92%</span>
                   </div>
@@ -203,6 +215,36 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </p>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="border-t bg-card px-6 py-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-col md:flex-row items-center justify-between">
+            <div className="flex items-center space-x-3 mb-4 md:mb-0">
+              <img 
+                src="/logo.png" 
+                alt="Tasknova" 
+                className="h-8 w-auto"
+                onError={(e) => {
+                  e.currentTarget.src = "/logo2.png";
+                }}
+              />
+              <div>
+                <p className="font-semibold text-foreground">Tasknova</p>
+                <p className="text-sm text-muted-foreground">Voice Axis Scan</p>
+              </div>
+            </div>
+            <div className="text-center md:text-right">
+              <p className="text-sm text-muted-foreground">
+                © 2024 Tasknova. All rights reserved.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Powered by AI • Built for Sales Excellence
+              </p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

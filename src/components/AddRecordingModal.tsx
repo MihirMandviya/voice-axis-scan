@@ -331,11 +331,19 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
+            <img 
+              src="/logo.png" 
+              alt="Tasknova" 
+              className="h-5 w-auto"
+              onError={(e) => {
+                e.currentTarget.src = "/logo2.png";
+              }}
+            />
             <Upload className="h-5 w-5" />
             Add New Recording
           </DialogTitle>
           <DialogDescription>
-            Add a new recording by providing the Google Drive URL and file name. The recording will be queued for analysis.
+            Add a new recording by providing the Google Drive URL and file name. The recording will be queued for analysis by <span className="font-semibold text-accent-blue">Tasknova</span> AI.
           </DialogDescription>
           
           {/* Debug Test Button - Remove in production */}
