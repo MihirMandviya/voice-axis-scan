@@ -1,0 +1,208 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle, Upload, BarChart3, Users, Zap, Shield, ArrowRight, Play } from "lucide-react";
+
+interface LandingPageProps {
+  onGetStarted: () => void;
+}
+
+export default function LandingPage({ onGetStarted }: LandingPageProps) {
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+
+  const features = [
+    {
+      icon: Upload,
+      title: "Easy Upload",
+      description: "Upload call recordings directly from Google Drive with one click"
+    },
+    {
+      icon: BarChart3,
+      title: "AI Analysis",
+      description: "Advanced sentiment, engagement, and objection analysis powered by AI"
+    },
+    {
+      icon: Users,
+      title: "Team Insights",
+      description: "Track performance across your entire sales team with detailed metrics"
+    },
+    {
+      icon: Zap,
+      title: "Real-time Processing",
+      description: "Get analysis results in under 5 minutes with automated pipeline"
+    },
+    {
+      icon: Shield,
+      title: "Secure & Private",
+      description: "Enterprise-grade security with encrypted storage and access controls"
+    }
+  ];
+
+  const benefits = [
+    "Automate call quality monitoring",
+    "Identify conversion levers and roadblocks",
+    "Track sentiment and engagement trends",
+    "Reduce manual review time by 90%",
+    "Improve team performance with data insights",
+    "Searchable transcript analysis"
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Hero Section */}
+      <section className="relative bg-gradient-to-br from-primary via-primary-hover to-accent-blue px-6 py-20 text-white">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <Badge className="mb-6 bg-white/20 text-white border-white/30">
+                AI-Powered Call Analysis
+              </Badge>
+              <h1 className="text-5xl font-bold leading-tight mb-6">
+                Transform Your Call Performance with 
+                <span className="text-accent-blue-light"> AI Insights</span>
+              </h1>
+              <p className="text-xl text-white/90 mb-8 leading-relaxed">
+                Upload call recordings from Google Drive and get detailed analysis reports 
+                with sentiment scoring, engagement metrics, and actionable insights to boost your team's performance.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button 
+                  size="xl" 
+                  variant="accent" 
+                  onClick={onGetStarted}
+                  className="bg-white text-primary hover:bg-white/90"
+                >
+                  Get Started Free
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+                <Button 
+                  size="xl" 
+                  variant="accent-outline"
+                  className="border-white text-white hover:bg-white hover:text-primary"
+                  onClick={() => setIsVideoPlaying(true)}
+                >
+                  <Play className="h-5 w-5" />
+                  Watch Demo
+                </Button>
+              </div>
+            </div>
+            
+            <div className="relative">
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="h-3 w-3 rounded-full bg-success"></div>
+                    <div className="text-sm">Live Analysis</div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-4 bg-white/20 rounded animate-pulse"></div>
+                    <div className="h-4 bg-white/20 rounded w-3/4 animate-pulse"></div>
+                    <div className="h-4 bg-white/20 rounded w-1/2 animate-pulse"></div>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Sentiment: 89%</span>
+                    <span>Engagement: 92%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-6">Powerful Features for Sales Teams</h2>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+              Everything you need to analyze, understand, and improve your call performance
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {features.map((feature, index) => (
+              <Card key={index} className="border-2 hover:border-accent-blue transition-colors">
+                <CardHeader>
+                  <div className="h-12 w-12 bg-accent-blue-light rounded-lg flex items-center justify-center mb-4">
+                    <feature.icon className="h-6 w-6 text-accent-blue" />
+                  </div>
+                  <CardTitle className="text-xl">{feature.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription className="text-base leading-relaxed">
+                    {feature.description}
+                  </CardDescription>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits Section */}
+      <section className="bg-secondary px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="text-4xl font-bold mb-6">Why Choose Our Platform?</h2>
+              <p className="text-xl text-muted-foreground mb-8">
+                Join hundreds of sales teams who have transformed their call performance with our AI-powered insights.
+              </p>
+              <div className="space-y-4">
+                {benefits.map((benefit, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <CheckCircle className="h-5 w-5 text-success flex-shrink-0" />
+                    <span className="text-lg">{benefit}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-6">
+              <Card className="text-center p-6">
+                <div className="text-3xl font-bold text-accent-blue mb-2">90%</div>
+                <div className="text-muted-foreground">Time Savings</div>
+              </Card>
+              <Card className="text-center p-6">
+                <div className="text-3xl font-bold text-success mb-2">34%</div>
+                <div className="text-muted-foreground">Conversion Boost</div>
+              </Card>
+              <Card className="text-center p-6">
+                <div className="text-3xl font-bold text-warning mb-2">5 Min</div>
+                <div className="text-muted-foreground">Analysis Time</div>
+              </Card>
+              <Card className="text-center p-6">
+                <div className="text-3xl font-bold text-primary mb-2">500+</div>
+                <div className="text-muted-foreground">Happy Teams</div>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="px-6 py-20">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="text-4xl font-bold mb-6">Ready to Transform Your Calls?</h2>
+          <p className="text-xl text-muted-foreground mb-8">
+            Start analyzing your call recordings today and unlock insights that drive results.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button size="xl" variant="accent" onClick={onGetStarted}>
+              Start Free Trial
+              <ArrowRight className="h-5 w-5" />
+            </Button>
+            <Button size="xl" variant="outline">
+              Schedule Demo
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mt-6">
+            No credit card required • 14-day free trial • Cancel anytime
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
