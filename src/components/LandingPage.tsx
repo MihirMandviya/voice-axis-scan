@@ -67,7 +67,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 </Badge>
               </div>
               <h1 className="text-5xl font-bold leading-tight mb-6">
-                <span className="text-accent-blue">Tasknova</span> Voice Axis Scan
+                <span className="text-accent-blue">Tasknova</span> Voice Analysis
                 <br />
                 Transform Your Call Performance with 
                 <span className="text-accent-blue"> AI Insights</span>
@@ -217,7 +217,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               />
               <div>
                 <p className="font-semibold text-foreground">Tasknova</p>
-                <p className="text-sm text-muted-foreground">Voice Axis Scan</p>
+                <p className="text-sm text-muted-foreground">Tasknova Voice Analysis</p>
               </div>
             </div>
             <div className="text-center md:text-right">

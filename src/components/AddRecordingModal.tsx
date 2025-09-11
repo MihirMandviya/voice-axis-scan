@@ -122,7 +122,7 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
           drive_file_id: extractFileIdFromUrl(driveUrl),
           file_name: fileName,
           stored_file_url: driveUrl,
-          status: 'queued'
+          status: 'processing'
         })
         .select()
         .single();

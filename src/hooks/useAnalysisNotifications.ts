@@ -7,26 +7,25 @@ const MOCK_USER_ID = '123e4567-e89b-12d3-a456-426614174000';
 
 export function useAnalysisNotifications() {
   const { toast } = useToast();
-  const previousAnalysesRef = useRef<Set<string>>(new Set());
+  const previousStatusesRef = useRef<Map<string, string>>(new Map());
   
-  // Query to check for completed analyses
-  const { data: completedAnalyses } = useQuery({
-    queryKey: ['completed_analyses'],
+  // Query to check for all recordings with their current status
+  const { data: recordings } = useQuery({
+    queryKey: ['recording_statuses'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('analyses')
+        .from('recordings')
         .select(`
           id,
-          created_at,
-          sentiment_score,
-          engagement_score,
-          recordings (
-            file_name,
-            status
+          file_name,
+          status,
+          analyses (
+            id,
+            sentiment_score,
+            engagement_score
           )
         `)
         .eq('user_id', MOCK_USER_ID)
-        .not('sentiment_score', 'is', null) // Has analysis data
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -36,34 +35,39 @@ export function useAnalysisNotifications() {
   });
 
   useEffect(() => {
-    if (!completedAnalyses) return;
+    if (!recordings) return;
 
-    const currentCompletedIds = new Set(completedAnalyses.map(a => a.id));
-    
-    // Find newly completed analyses
-    const newlyCompleted = completedAnalyses.filter(analysis => 
-      !previousAnalysesRef.current.has(analysis.id)
-    );
-
-    // Show notifications for newly completed analyses
-    newlyCompleted.forEach(analysis => {
-      const fileName = analysis.recordings?.file_name || 'Recording';
-      const sentimentScore = (analysis.sentiment_score || 0).toFixed(0);
-      const engagementScore = (analysis.engagement_score || 0).toFixed(0);
+    recordings.forEach(recording => {
+      const currentStatus = recording.status || 'unknown';
+      const previousStatus = previousStatusesRef.current.get(recording.id);
       
-      toast({
-        title: "🎉 Analysis Complete!",
-        description: `${fileName} - Sentiment: ${sentimentScore}%, Engagement: ${engagementScore}%`,
-        duration: 6000,
-      });
+      // Only show notification when status changes to 'completed' and has analysis data
+      if (
+        currentStatus === 'completed' && 
+        previousStatus !== 'completed' && 
+        recording.analyses && 
+        recording.analyses.length > 0 &&
+        recording.analyses[0].sentiment_score !== null
+      ) {
+        const analysis = recording.analyses[0];
+        const fileName = recording.file_name || 'Recording';
+        const sentimentScore = (analysis.sentiment_score || 0).toFixed(0);
+        const engagementScore = (analysis.engagement_score || 0).toFixed(0);
+        
+        toast({
+          title: "🎉 Analysis Complete!",
+          description: `${fileName} - Sentiment: ${sentimentScore}%, Engagement: ${engagementScore}%`,
+          duration: 6000,
+        });
+      }
+      
+      // Update the status tracking
+      previousStatusesRef.current.set(recording.id, currentStatus);
     });
-
-    // Update the reference
-    previousAnalysesRef.current = currentCompletedIds;
-  }, [completedAnalyses, toast]);
+  }, [recordings, toast]);
 
   return {
-    completedAnalyses: completedAnalyses || [],
-    hasNewCompletedAnalyses: completedAnalyses && completedAnalyses.length > previousAnalysesRef.current.size
+    recordings: recordings || [],
+    completedRecordings: recordings?.filter(r => r.status === 'completed') || []
   };
 }

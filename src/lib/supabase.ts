@@ -13,7 +13,7 @@ export interface Recording {
   file_name?: string
   file_size?: number
   stored_file_url?: string
-  status?: 'queued' | 'processing' | 'completed' | 'failed'
+  status?: 'processing' | 'transcribing' | 'analyzing' | 'completed' | 'failed' | 'queued' | 'pending' | 'uploaded'
   duration_seconds?: number
   transcript?: string
   created_at: string
@@ -34,6 +34,9 @@ export interface Analysis {
   call_outcome?: string
   detailed_call_analysis?: any
   short_summary?: string
+  participants?: any // JSON object containing participant information
+  objections_raised?: number // Number of objections raised during the call
+  objections_tackled?: number // Number of objections successfully tackled/handled
   created_at: string
 }
 

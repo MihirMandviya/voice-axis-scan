@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2 } from "lucide-react";
+import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2 } from "lucide-react";
 import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } from "@/hooks/useSupabaseData";
 import AddRecordingModal from "./AddRecordingModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
+// import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Analysis } from "@/lib/supabase";
 
@@ -25,8 +25,8 @@ export default function Dashboard() {
   const { toast } = useToast();
   const navigate = useNavigate();
   
-  // Enable analysis notifications
-  useAnalysisNotifications();
+  // Analysis notifications disabled per user request
+  // useAnalysisNotifications();
 
   // Handle tab parameter from URL
   useEffect(() => {
@@ -57,7 +57,12 @@ export default function Dashboard() {
       case "queued":
       case "pending":
       case "uploaded":
-        return <Badge className="bg-yellow-100 text-yellow-700">Queued</Badge>;
+        return (
+          <Badge className="bg-accent-blue-light text-accent-blue flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Processing
+          </Badge>
+        );
       case "failed":
       case "error":
         return <Badge className="bg-destructive-light text-destructive">Failed</Badge>;
@@ -68,7 +73,7 @@ export default function Dashboard() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || !dashboardData) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -103,7 +108,7 @@ export default function Dashboard() {
     );
   }
 
-  const { kpiData, sentimentData, trendData, engagementData, objectionData, recentCalls } = dashboardData;
+  const { kpiData, sentimentData, trendData, engagementData, objectionData, recentCalls, last10CallsSentiment, last10CallsConfidence, last10CallsObjections } = dashboardData;
 
   const handleRecordingAdded = () => {
     // Invalidate and refetch all queries to refresh the dashboard
@@ -158,7 +163,7 @@ export default function Dashboard() {
               }}
             />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Voice Axis Scan</h1>
+              <h1 className="text-2xl font-bold text-foreground">Tasknova Voice Analysis</h1>
               <p className="text-muted-foreground">by <span className="font-semibold text-accent-blue">Tasknova</span> - AI-powered call analysis</p>
             </div>
           </div>
@@ -199,7 +204,7 @@ export default function Dashboard() {
               className="w-full justify-start"
               onClick={() => setSelectedTab("analytics")}
             >
-              <BarChart className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4" />
               Analytics
             </Button>
           </nav>
@@ -210,7 +215,7 @@ export default function Dashboard() {
           <Tabs value={selectedTab} onValueChange={setSelectedTab}>
             <TabsContent value="overview" className="space-y-6">
               {/* KPI Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
@@ -267,20 +272,6 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-success">
-                      {(kpiData.conversionRate * 100).toFixed(0)}%
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      <span className="text-success">+3%</span> from last month
-                    </p>
-                  </CardContent>
-                </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -289,61 +280,132 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-accent-blue">
-                      {kpiData.avgConfidenceExecutive.toFixed(0)}%
+                      {kpiData.avgConfidenceExecutive.toFixed(0)}/10
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Person: <span className="text-success">{kpiData.avgConfidencePerson.toFixed(0)}%</span>
+                      Average executive confidence
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Person Confidence</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-success">
+                      {kpiData.avgConfidencePerson.toFixed(0)}/10
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Average person confidence
+                    </p>
+                  </CardContent>
+                </Card>
+
+
+                <Card className="hover:shadow-md transition-shadow duration-200">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">High Performing</CardTitle>
+                    <Star className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-success">
+                      {kpiData.highPerformingCalls || 0}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Calls with 80%+ sentiment & 75%+ engagement
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-md transition-shadow duration-200">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Action Items</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-warning">
+                      {kpiData.callsWithNextSteps || 0}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Calls with defined next steps
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-md transition-shadow duration-200">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Objection Success</CardTitle>
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-success">
+                      {kpiData.objectionSuccessRate.toFixed(0)}%
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {kpiData.totalObjectionsTackled}/{kpiData.totalObjectionsRaised} tackled
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Charts Row */}
+              {/* Last 10 Calls Analysis Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Sentiment Distribution</CardTitle>
-                    <CardDescription>Breakdown of call sentiments this week</CardDescription>
+                    <CardTitle>Last 10 Calls - Sentiment Trend</CardTitle>
+                    <CardDescription>Sentiment analysis progression over recent calls</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={sentimentData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={120}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {sentimentData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
+                      <LineChart data={last10CallsSentiment}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="call" />
+                        <YAxis domain={[0, 100]} />
+                        <Tooltip 
+                          formatter={(value, name) => [`${value}%`, 'Sentiment']}
+                          labelFormatter={(label) => {
+                            const item = last10CallsSentiment.find(d => d.call === label);
+                            return item ? `${item.callName} (${item.date})` : label;
+                          }}
+                        />
                         <Legend />
-                      </PieChart>
+                        <Line 
+                          type="monotone" 
+                          dataKey="sentiment" 
+                          stroke="hsl(var(--success))" 
+                          strokeWidth={3}
+                          dot={{ fill: 'hsl(var(--success))', strokeWidth: 2, r: 4 }}
+                          activeDot={{ r: 6, stroke: 'hsl(var(--success))', strokeWidth: 2 }}
+                        />
+                      </LineChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Sentiment & Engagement Trends</CardTitle>
-                    <CardDescription>Daily performance over the last week</CardDescription>
+                    <CardTitle>Last 10 Calls - Confidence Analysis</CardTitle>
+                    <CardDescription>Executive and Person confidence scores comparison</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={trendData}>
+                      <BarChart data={last10CallsConfidence}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
+                        <XAxis dataKey="call" />
+                        <YAxis domain={[0, 10]} />
+                        <Tooltip 
+                          formatter={(value, name) => [`${value}/10`, name === 'executive' ? 'Executive Confidence' : 'Person Confidence']}
+                          labelFormatter={(label) => {
+                            const item = last10CallsConfidence.find(d => d.call === label);
+                            return item ? `${item.callName} (${item.date})` : label;
+                          }}
+                        />
                         <Legend />
-                        <Line type="monotone" dataKey="sentiment" stroke="hsl(var(--success))" strokeWidth={2} />
-                        <Line type="monotone" dataKey="engagement" stroke="hsl(var(--accent-blue))" strokeWidth={2} />
-                      </LineChart>
+                        <Bar dataKey="executive" fill="hsl(var(--accent-blue))" name="Executive" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="person" fill="hsl(var(--success))" name="Person" radius={[2, 2, 0, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
@@ -533,18 +595,123 @@ export default function Dashboard() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="analytics">
+            <TabsContent value="analytics" className="space-y-6">
+              {/* Charts moved from Dashboard Overview */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Engagement Levels</CardTitle>
-                    <CardDescription>Distribution of engagement scores</CardDescription>
+                    <CardTitle>Sentiment Distribution</CardTitle>
+                    <CardDescription>Breakdown of call sentiments this week</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={engagementData}>
+                      <PieChart>
+                        <Pie
+                          data={sentimentData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={120}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {sentimentData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Sentiment & Engagement Trends</CardTitle>
+                    <CardDescription>Daily performance over the last week</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={trendData}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="level" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="sentiment" stroke="hsl(var(--success))" strokeWidth={2} />
+                        <Line type="monotone" dataKey="engagement" stroke="hsl(var(--accent-blue))" strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Additional Data Visualizations */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Confidence Score Trends</CardTitle>
+                    <CardDescription>Executive vs Person confidence comparison</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={last10CallsConfidence}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="call" />
+                        <YAxis domain={[0, 10]} />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="executive" stroke="hsl(var(--accent-blue))" strokeWidth={2} />
+                        <Line type="monotone" dataKey="person" stroke="hsl(var(--success))" strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Objections: Raised vs Tackled</CardTitle>
+                    <CardDescription>Last 10 calls objection handling</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={last10CallsObjections}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="call" />
+                        <YAxis />
+                        <Tooltip 
+                          formatter={(value, name) => [`${value}`, name === 'raised' ? 'Objections Raised' : 'Objections Tackled']}
+                          labelFormatter={(label) => {
+                            const item = last10CallsObjections?.find(d => d.call === label);
+                            return item ? `${item.callName} (${item.date})` : label;
+                          }}
+                        />
+                        <Legend />
+                        <Bar dataKey="raised" fill="#F59E0B" name="Raised" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="tackled" fill="#10B981" name="Tackled" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Additional Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Performance Score Distribution</CardTitle>
+                    <CardDescription>Combined sentiment & engagement performance</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={[
+                        { range: '90-100%', count: (recentCalls || []).filter(c => (c.sentiment + c.engagement) / 2 >= 90).length, color: 'hsl(var(--success))' },
+                        { range: '80-89%', count: (recentCalls || []).filter(c => (c.sentiment + c.engagement) / 2 >= 80 && (c.sentiment + c.engagement) / 2 < 90).length, color: 'hsl(var(--accent-blue))' },
+                        { range: '70-79%', count: (recentCalls || []).filter(c => (c.sentiment + c.engagement) / 2 >= 70 && (c.sentiment + c.engagement) / 2 < 80).length, color: 'hsl(var(--warning))' },
+                        { range: '<70%', count: (recentCalls || []).filter(c => (c.sentiment + c.engagement) / 2 < 70).length, color: 'hsl(var(--destructive))' }
+                      ]}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="range" />
                         <YAxis />
                         <Tooltip />
                         <Bar dataKey="count" fill="hsl(var(--accent-blue))" />
@@ -555,21 +722,27 @@ export default function Dashboard() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Objection Handling Analysis</CardTitle>
-                    <CardDescription>Types of objections successfully handled</CardDescription>
+                    <CardTitle>Engagement Levels</CardTitle>
+                    <CardDescription>Distribution of engagement scores</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={objectionData} layout="horizontal">
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={engagementData}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" />
-                        <YAxis dataKey="category" type="category" width={80} />
+                        <XAxis dataKey="level" />
+                        <YAxis />
                         <Tooltip />
-                        <Bar dataKey="count" fill="hsl(var(--warning))" />
+                        <Bar dataKey="count">
+                          {engagementData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
+
+
               </div>
             </TabsContent>
           </Tabs>
