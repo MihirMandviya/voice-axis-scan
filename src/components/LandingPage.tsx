@@ -57,10 +57,11 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <img 
                   src="/logo2.png" 
                   alt="Tasknova" 
-                  className="h-12 w-auto mr-4"
+                  className="h-12 w-auto mr-4 cursor-pointer hover:opacity-80 transition-opacity"
                   onError={(e) => {
                     e.currentTarget.src = "/logo.png";
                   }}
+                  onClick={() => window.location.href = '/'}
                 />
                 <Badge className="bg-accent-blue/10 text-accent-blue border-accent-blue/20">
                   AI-Powered Call Analysis
@@ -142,6 +143,104 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </div>
       </section>
 
+      {/* Industries Section */}
+      <section className="px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-6">Industries That Trust Our Solution</h2>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+              From HR agencies to banking institutions, businesses across industries rely on our AI-powered call analysis
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
+              <CardHeader>
+                <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Users className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl">HR Agencies</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  Streamline candidate interviews and improve hiring decisions with detailed conversation analysis and candidate assessment insights.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
+              <CardHeader>
+                <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Upload className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl">Real Estate</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  Enhance client consultations, property showings, and negotiations with sentiment analysis and engagement tracking.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
+              <CardHeader>
+                <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Shield className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl">Customer Support</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  Monitor support call quality, identify customer pain points, and improve resolution rates with AI-driven insights.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
+              <CardHeader>
+                <div className="h-12 w-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Zap className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl">Lead Qualification</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  Optimize sales conversations, identify qualified prospects, and improve conversion rates with detailed call analytics.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
+              <CardHeader>
+                <div className="h-12 w-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <BarChart3 className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl">Banking</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  Ensure compliance, improve customer relationships, and enhance loan consultations with comprehensive call analysis.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
+              <CardHeader>
+                <div className="h-12 w-12 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <CheckCircle className="h-6 w-6 text-white" />
+                </div>
+                <CardTitle className="text-xl">Customer & Business Operations</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  Optimize operational efficiency, improve customer interactions, and drive business growth with actionable call insights.
+                </CardDescription>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Benefits Section */}
       <section className="bg-secondary px-6 py-20">
         <div className="mx-auto max-w-6xl">
@@ -210,10 +309,11 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <img 
                 src="/logo.png" 
                 alt="Tasknova" 
-                className="h-8 w-auto"
+                className="h-8 w-auto cursor-pointer hover:opacity-80 transition-opacity"
                 onError={(e) => {
                   e.currentTarget.src = "/logo2.png";
                 }}
+                onClick={() => window.location.href = '/'}
               />
               <div>
                 <p className="font-semibold text-foreground">Tasknova</p>

@@ -157,10 +157,11 @@ export default function Dashboard() {
             <img 
               src="/logo.png" 
               alt="Tasknova" 
-              className="h-10 w-auto"
+              className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
               onError={(e) => {
                 e.currentTarget.src = "/logo2.png";
               }}
+              onClick={() => navigate('/')}
             />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Tasknova Voice Analysis</h1>
@@ -183,30 +184,30 @@ export default function Dashboard() {
         {/* Sidebar */}
         <aside className="w-64 border-r bg-card p-6">
           <nav className="space-y-2">
-            <Button 
-              variant={selectedTab === "overview" ? "accent" : "ghost"} 
-              className="w-full justify-start"
-              onClick={() => setSelectedTab("overview")}
-            >
-              <TrendingUp className="h-4 w-4" />
-              Overview
-            </Button>
-            <Button 
-              variant={selectedTab === "recordings" ? "accent" : "ghost"} 
-              className="w-full justify-start"
-              onClick={() => setSelectedTab("recordings")}
-            >
-              <Phone className="h-4 w-4" />
-              Recordings
-            </Button>
-            <Button 
-              variant={selectedTab === "analytics" ? "accent" : "ghost"} 
-              className="w-full justify-start"
-              onClick={() => setSelectedTab("analytics")}
-            >
-              <BarChart3 className="h-4 w-4" />
-              Analytics
-            </Button>
+              <Button 
+                variant={selectedTab === "overview" ? "accent" : "ghost"} 
+                className="w-full justify-start"
+                onClick={() => setSelectedTab("overview")}
+              >
+                <TrendingUp className="h-4 w-4" />
+                Dashboard
+              </Button>
+              <Button 
+                variant={selectedTab === "recordings" ? "accent" : "ghost"} 
+                className="w-full justify-start"
+                onClick={() => setSelectedTab("recordings")}
+              >
+                <Phone className="h-4 w-4" />
+                Recordings
+              </Button>
+              <Button 
+                variant={selectedTab === "analytics" ? "accent" : "ghost"} 
+                className="w-full justify-start"
+                onClick={() => setSelectedTab("analytics")}
+              >
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </Button>
           </nav>
         </aside>
 
