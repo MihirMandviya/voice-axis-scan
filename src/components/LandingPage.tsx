@@ -68,7 +68,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 </Badge>
               </div>
               <h1 className="text-5xl font-bold leading-tight mb-6">
-                <span className="text-accent-blue">Tasknova</span> Voice Analysis
+                <span className="text-accent-blue">Tasknova</span>
                 <br />
                 Transform Your Call Performance with 
                 <span className="text-accent-blue"> AI Insights</span>
@@ -95,16 +95,106 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="h-3 w-3 rounded-full bg-success"></div>
-                    <div className="text-sm text-gray-600">Live Analysis</div>
+                    <div className="text-sm text-gray-600">Growth Analytics</div>
                   </div>
-                  <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
-                    <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                  
+                  {/* Frequency Graph */}
+                  <div className="relative h-32 w-full">
+                    <svg className="w-full h-full" viewBox="0 0 300 120" preserveAspectRatio="none">
+                      <defs>
+                        {/* Bar gradients */}
+                        <linearGradient id="barGradient1" x1="0%" y1="100%" x2="0%" y2="0%">
+                          <stop offset="0%" stopColor="#3b82f6" />
+                          <stop offset="100%" stopColor="#60a5fa" />
+                        </linearGradient>
+                        <linearGradient id="barGradient2" x1="0%" y1="100%" x2="0%" y2="0%">
+                          <stop offset="0%" stopColor="#06b6d4" />
+                          <stop offset="100%" stopColor="#67e8f9" />
+                        </linearGradient>
+                        <linearGradient id="barGradient3" x1="0%" y1="100%" x2="0%" y2="0%">
+                          <stop offset="0%" stopColor="#10b981" />
+                          <stop offset="100%" stopColor="#34d399" />
+                        </linearGradient>
+                      </defs>
+                      
+                      {/* Grid lines */}
+                      <g stroke="#e5e7eb" strokeWidth="0.5" opacity="0.5">
+                        <line x1="0" y1="100" x2="300" y2="100" />
+                        <line x1="0" y1="80" x2="300" y2="80" />
+                        <line x1="0" y1="60" x2="300" y2="60" />
+                        <line x1="0" y1="40" x2="300" y2="40" />
+                        <line x1="0" y1="20" x2="300" y2="20" />
+                      </g>
+                      
+                      {/* Frequency bars */}
+                      <g>
+                        {/* Bar 1 */}
+                        <rect x="20" y="70" width="15" height="30" fill="url(#barGradient1)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="30;35;30" dur="2s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="70;65;70" dur="2s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 2 */}
+                        <rect x="45" y="50" width="15" height="50" fill="url(#barGradient2)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="50;55;50" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="50;45;50" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 3 */}
+                        <rect x="70" y="40" width="15" height="60" fill="url(#barGradient3)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="60;65;60" dur="2s" begin="0.4s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="40;35;40" dur="2s" begin="0.4s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 4 */}
+                        <rect x="95" y="60" width="15" height="40" fill="url(#barGradient1)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="40;45;40" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="60;55;60" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 5 */}
+                        <rect x="120" y="30" width="15" height="70" fill="url(#barGradient3)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="70;75;70" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="30;25;30" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 6 */}
+                        <rect x="145" y="55" width="15" height="45" fill="url(#barGradient2)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="45;50;45" dur="2s" begin="1s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="55;50;55" dur="2s" begin="1s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 7 */}
+                        <rect x="170" y="25" width="15" height="75" fill="url(#barGradient3)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="75;80;75" dur="2s" begin="1.2s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="25;20;25" dur="2s" begin="1.2s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 8 */}
+                        <rect x="195" y="45" width="15" height="55" fill="url(#barGradient1)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="55;60;55" dur="2s" begin="1.4s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="45;40;45" dur="2s" begin="1.4s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 9 */}
+                        <rect x="220" y="35" width="15" height="65" fill="url(#barGradient2)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="65;70;65" dur="2s" begin="1.6s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="35;30;35" dur="2s" begin="1.6s" repeatCount="indefinite"/>
+                        </rect>
+                        
+                        {/* Bar 10 */}
+                        <rect x="245" y="20" width="15" height="80" fill="url(#barGradient3)" rx="2" className="drop-shadow-sm">
+                          <animate attributeName="height" values="80;85;80" dur="2s" begin="1.8s" repeatCount="indefinite"/>
+                          <animate attributeName="y" values="20;15;20" dur="2s" begin="1.8s" repeatCount="indefinite"/>
+                        </rect>
+                      </g>
+                    </svg>
+                    
                   </div>
+                  
                   <div className="flex justify-between text-sm text-gray-700 font-medium">
-                    <span>Sentiment: 89%</span>
-                    <span>Engagement: 92%</span>
+                    <span>Performance Growth</span>
+                    <span className="text-success">↗ Trending Up</span>
                   </div>
                 </div>
               </div>
@@ -317,15 +407,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               />
               <div>
                 <p className="font-semibold text-foreground">Tasknova</p>
-                <p className="text-sm text-muted-foreground">Tasknova Voice Analysis</p>
+                <p className="text-sm text-muted-foreground">AI-Powered Call Analysis</p>
               </div>
             </div>
             <div className="text-center md:text-right">
               <p className="text-sm text-muted-foreground">
-                © 2024 Tasknova. All rights reserved.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Powered by AI • Built for Sales Excellence
+                © 2025 Tasknova. All rights reserved.
               </p>
             </div>
           </div>
