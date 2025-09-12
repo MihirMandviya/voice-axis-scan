@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, FileText, MessageSquare, Mic, TrendingUp, Users, Star, Target, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase, Analysis, Recording } from "@/lib/supabase";
-
-const MOCK_USER_ID = "123e4567-e89b-12d3-a456-426614174000";
 
 export default function AnalysisDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -19,7 +19,7 @@ export default function AnalysisDetail() {
 
   useEffect(() => {
     const fetchAnalysisAndRecording = async () => {
-      if (!id) return;
+      if (!id || !user) return;
 
       try {
         // Fetch analysis
@@ -27,7 +27,6 @@ export default function AnalysisDetail() {
           .from('analyses')
           .select('*')
           .eq('id', id)
-          .eq('user_id', MOCK_USER_ID)
           .single();
 
         if (analysisError) throw analysisError;
@@ -51,7 +50,7 @@ export default function AnalysisDetail() {
     };
 
     fetchAnalysisAndRecording();
-  }, [id]);
+  }, [id, user]);
 
   const getSentimentColor = (score: number) => {
     if (score >= 80) return "text-success";

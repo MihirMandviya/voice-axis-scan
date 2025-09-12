@@ -2,17 +2,19 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-
-const MOCK_USER_ID = '123e4567-e89b-12d3-a456-426614174000';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useAnalysisNotifications() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const previousStatusesRef = useRef<Map<string, string>>(new Map());
   
   // Query to check for all recordings with their current status
   const { data: recordings } = useQuery({
-    queryKey: ['recording_statuses'],
+    queryKey: ['recording_statuses', user?.id],
     queryFn: async () => {
+      if (!user) return [];
+      
       const { data, error } = await supabase
         .from('recordings')
         .select(`
@@ -25,13 +27,13 @@ export function useAnalysisNotifications() {
             engagement_score
           )
         `)
-        .eq('user_id', MOCK_USER_ID)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       return data;
     },
     refetchInterval: 5000, // Check every 5 seconds
+    enabled: !!user
   });
 
   useEffect(() => {

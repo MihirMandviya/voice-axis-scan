@@ -47,10 +47,12 @@ const Index = () => {
         .from('user_profiles')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle instead of single to avoid errors when no record exists
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error fetching profile:', error);
+        // If it's a 406 or other error, still proceed to onboarding
+        setCurrentView('onboarding');
         return;
       }
 
@@ -63,6 +65,8 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      // On any error, default to onboarding
+      setCurrentView('onboarding');
     } finally {
       setProfileLoading(false);
     }

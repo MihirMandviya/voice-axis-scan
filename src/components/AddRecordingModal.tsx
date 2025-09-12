@@ -145,7 +145,7 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         .from('analyses')
         .insert({
           recording_id: recording.id,
-          user_id: MOCK_USER_ID,
+          user_id: user.id,
           sentiment_score: null,
           engagement_score: null,
           confidence_score_executive: null,
@@ -171,16 +171,18 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         name: fileName,
         recording_id: recording.id,
         analysis_id: analysis?.id || null,
-        user_id: MOCK_USER_ID,
+        user_id: user.id,
         timestamp: new Date().toISOString(),
         source: 'voice-axis-scan-frontend'
       };
 
       console.log('🚀 Sending webhook POST request to:', WEBHOOK_URL);
       console.log('📦 Webhook payload:', webhookPayload);
+      console.log('👤 User ID in payload:', webhookPayload.user_id);
 
       // First attempt: Standard fetch with CORS
       try {
+        console.log('🔄 Attempting webhook call...');
         const webhookResponse = await fetch(WEBHOOK_URL, {
           method: 'POST',
           headers: {
@@ -197,8 +199,18 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
           const responseText = await webhookResponse.text();
           console.log('✅ Webhook response body:', responseText);
           console.log('🎉 Webhook call successful!');
+          
+          toast({
+            title: "Recording Added Successfully!",
+            description: "Your recording has been submitted for analysis. You'll be notified when it's complete.",
+          });
         } else {
           console.warn(`⚠️ Webhook returned ${webhookResponse.status}: ${webhookResponse.statusText}`);
+          toast({
+            title: "Recording Added",
+            description: "Your recording has been saved, but there was an issue with the analysis pipeline. Please try again later.",
+            variant: "destructive",
+          });
         }
         
       } catch (corsError) {
@@ -230,18 +242,13 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
           } catch (xhrError) {
             console.error('❌ All webhook attempts failed:', xhrError);
             toast({
-              title: "Warning", 
-              description: "Recording saved but webhook notification failed. Processing may be delayed.",
-              variant: "default",
+              title: "Recording Added", 
+              description: "Your recording has been saved, but there was an issue with the analysis pipeline. Please try again later.",
+              variant: "destructive",
             });
           }
         }
       }
-
-      toast({
-        title: "Success",
-        description: "Recording added successfully and queued for processing",
-      });
 
       // Reset form and close modal
       setDriveUrl("");
@@ -273,12 +280,14 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
 
   // Test webhook function for debugging
   const testWebhook = async () => {
+    if (!user) return;
+    
     const testPayload = {
       url: "https://drive.google.com/test",
       name: "test_recording.mp3",
       recording_id: "test-recording-id",
       analysis_id: "test-analysis-id",
-      user_id: MOCK_USER_ID,
+      user_id: user.id,
       timestamp: new Date().toISOString(),
       source: 'voice-axis-scan-frontend-test'
     };
