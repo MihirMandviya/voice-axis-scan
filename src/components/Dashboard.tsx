@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2 } from "lucide-react";
+import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User } from "lucide-react";
 import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } from "@/hooks/useSupabaseData";
 import AddRecordingModal from "./AddRecordingModal";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,7 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Analysis } from "@/lib/supabase";
 
-export default function Dashboard() {
+interface DashboardProps {
+  onShowProfile?: () => void;
+}
+
+export default function Dashboard({ onShowProfile }: DashboardProps) {
   const [selectedTab, setSelectedTab] = useState("overview");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchParams] = useSearchParams();
@@ -168,15 +172,25 @@ export default function Dashboard() {
               
             </div>
           </div>
-          <Button 
-            variant="accent" 
-            size="lg" 
-            className="gap-2"
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            <Upload className="h-4 w-4" />
-            Add Recording
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="outline"
+              onClick={onShowProfile}
+              className="flex items-center gap-2"
+            >
+              <User className="h-4 w-4" />
+              Profile
+            </Button>
+            <Button 
+              variant="accent" 
+              size="lg" 
+              className="gap-2"
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Upload className="h-4 w-4" />
+              Add Recording
+            </Button>
+          </div>
         </div>
       </header>
 

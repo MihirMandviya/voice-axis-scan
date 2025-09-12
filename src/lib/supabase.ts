@@ -50,3 +50,19 @@ export interface MetricsAggregate {
   conversion_rate?: number
   objections_rate?: number
 }
+
+export interface UserProfile {
+  id: string
+  user_id: string
+  email: string
+  full_name?: string
+  avatar_url?: string
+  company_name?: string
+  company_email?: string
+  company_industry?: string
+  position?: string
+  use_cases?: string[]
+  onboarding_completed: boolean
+  created_at: string
+  updated_at: string
+}
