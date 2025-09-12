@@ -48,21 +48,49 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Navigation Bar */}
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex justify-between items-center h-16">
+            {/* Left side - Logo */}
+            <div className="flex items-center">
+              <img 
+                src="/logo2.png" 
+                alt="Tasknova" 
+                className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+                onError={(e) => {
+                  e.currentTarget.src = "/logo.png";
+                }}
+                onClick={() => window.location.href = '/'}
+              />
+            </div>
+            
+            {/* Right side - Auth buttons */}
+            <div className="flex items-center space-x-4">
+              <Button 
+                variant="ghost" 
+                onClick={onGetStarted}
+                className="text-gray-700 hover:text-accent-blue"
+              >
+                Log In
+              </Button>
+              <Button 
+                onClick={onGetStarted}
+                className="bg-accent-blue text-white hover:bg-accent-blue/90"
+              >
+                Sign Up
+              </Button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 px-6 py-20 text-gray-900">
         <div className="mx-auto max-w-6xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
               <div className="flex items-center mb-6">
-                <img 
-                  src="/logo2.png" 
-                  alt="Tasknova" 
-                  className="h-12 w-auto mr-4 cursor-pointer hover:opacity-80 transition-opacity"
-                  onError={(e) => {
-                    e.currentTarget.src = "/logo.png";
-                  }}
-                  onClick={() => window.location.href = '/'}
-                />
                 <Badge className="bg-accent-blue/10 text-accent-blue border-accent-blue/20">
                   AI-Powered Call Analysis
                 </Badge>

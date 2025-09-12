@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Loader2, Upload } from "lucide-react";
 
@@ -14,7 +15,6 @@ interface AddRecordingModalProps {
 }
 
 const WEBHOOK_URL = "https://n8nautomation.site/webhook/a2025371-8955-4ef4-8a74-0686456b3003";
-const MOCK_USER_ID = "123e4567-e89b-12d3-a456-426614174000";
 
 // Validation functions
 const validateGoogleDriveUrl = (url: string): { isValid: boolean; error?: string } => {
@@ -41,12 +41,11 @@ const validateGoogleDriveUrl = (url: string): { isValid: boolean; error?: string
   return { isValid: true };
 };
 
-const checkUniqueFileName = async (fileName: string): Promise<{ isUnique: boolean; error?: string }> => {
+const checkUniqueFileName = async (fileName: string, userId: string): Promise<{ isUnique: boolean; error?: string }> => {
   try {
     const { data, error } = await supabase
       .from('recordings')
       .select('id')
-      .eq('user_id', MOCK_USER_ID)
       .eq('file_name', fileName.trim())
       .limit(1);
 
@@ -74,9 +73,19 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
   const [fileName, setFileName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to add recordings",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!driveUrl.trim() || !fileName.trim()) {
       toast({
@@ -103,7 +112,7 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
       }
 
       // Step 2: Check if file name is unique
-      const uniqueCheck = await checkUniqueFileName(fileName.trim());
+      const uniqueCheck = await checkUniqueFileName(fileName.trim(), user.id);
       if (!uniqueCheck.isUnique) {
         toast({
           title: "Duplicate Name",
@@ -118,7 +127,7 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
       const { data: recording, error: dbError } = await supabase
         .from('recordings')
         .insert({
-          user_id: MOCK_USER_ID,
+          user_id: user.id,
           drive_file_id: extractFileIdFromUrl(driveUrl),
           file_name: fileName,
           stored_file_url: driveUrl,

@@ -48,6 +48,37 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     'Other'
   ];
 
+  const positions = [
+    'CEO / Founder',
+    'CTO / Chief Technology Officer',
+    'COO / Chief Operating Officer',
+    'VP of Sales',
+    'VP of Marketing', 
+    'VP of Operations',
+    'Sales Manager',
+    'Sales Director',
+    'Marketing Manager',
+    'Marketing Director',
+    'HR Manager',
+    'HR Director',
+    'Operations Manager',
+    'Operations Director',
+    'Business Development Manager',
+    'Business Development Director',
+    'Customer Success Manager',
+    'Account Manager',
+    'Project Manager',
+    'Product Manager',
+    'Team Lead',
+    'Senior Manager',
+    'Manager',
+    'Coordinator',
+    'Specialist',
+    'Analyst',
+    'Consultant',
+    'Other'
+  ];
+
   const useCases = [
     'Sales Call Analysis',
     'Recruitment Call Analysis', 
@@ -314,13 +345,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                         <Label htmlFor="position" className="text-base font-medium">
                           Your Position in the Company *
                         </Label>
-                        <Input
-                          id="position"
+                        <Select
                           value={formData.position}
-                          onChange={(e) => setFormData(prev => ({ ...prev, position: e.target.value }))}
-                          placeholder="e.g., Sales Manager, HR Director, CEO"
-                          className="mt-2 h-12 text-base"
-                        />
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}
+                        >
+                          <SelectTrigger className="mt-2 h-12 text-base">
+                            <SelectValue placeholder="Select your position in the company" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60">
+                            {positions.map((position) => (
+                              <SelectItem key={position} value={position}>
+                                {position}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}

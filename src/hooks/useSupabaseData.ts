@@ -1,29 +1,35 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase, Recording, Analysis, MetricsAggregate } from '@/lib/supabase'
-
-// Mock user ID - in a real app, this would come from authentication
-const MOCK_USER_ID = '123e4567-e89b-12d3-a456-426614174000'
+import { useAuth } from '@/contexts/AuthContext'
 
 export function useRecordings() {
+  const { user } = useAuth()
+  
   return useQuery({
-    queryKey: ['recordings'],
+    queryKey: ['recordings', user?.id],
     queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
       const { data, error } = await supabase
         .from('recordings')
         .select('*')
-        .eq('user_id', MOCK_USER_ID)
         .order('created_at', { ascending: false })
       
       if (error) throw error
       return data as Recording[]
-    }
+    },
+    enabled: !!user
   })
 }
 
 export function useAnalyses() {
+  const { user } = useAuth()
+  
   return useQuery({
-    queryKey: ['analyses'],
+    queryKey: ['analyses', user?.id],
     queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
       const { data, error } = await supabase
         .from('analyses')
         .select(`
@@ -34,28 +40,32 @@ export function useAnalyses() {
             created_at
           )
         `)
-        .eq('user_id', MOCK_USER_ID)
         .order('created_at', { ascending: false })
       
       if (error) throw error
       return data as (Analysis & { recordings: Recording })[]
-    }
+    },
+    enabled: !!user
   })
 }
 
 export function useMetricsAggregates() {
+  const { user } = useAuth()
+  
   return useQuery({
-    queryKey: ['metrics_aggregates'],
+    queryKey: ['metrics_aggregates', user?.id],
     queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
       const { data, error } = await supabase
         .from('metrics_aggregates')
         .select('*')
-        .eq('user_id', MOCK_USER_ID)
         .order('date', { ascending: false })
       
       if (error) throw error
       return data as MetricsAggregate[]
-    }
+    },
+    enabled: !!user
   })
 }
 
@@ -209,15 +219,18 @@ export function useDashboardStats() {
 
 export function useDeleteRecording() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
 
   return useMutation({
     mutationFn: async (recordingId: string) => {
+      if (!user) throw new Error('User not authenticated')
+      
       // Delete the recording (analyses will be deleted automatically due to CASCADE)
+      // RLS policies ensure users can only delete their own recordings
       const { error } = await supabase
         .from('recordings')
         .delete()
         .eq('id', recordingId)
-        .eq('user_id', MOCK_USER_ID) // Extra security check
       
       if (error) throw error
       return recordingId

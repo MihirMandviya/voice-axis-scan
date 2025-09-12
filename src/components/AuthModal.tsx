@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Chrome, ArrowRight, Shield, Zap, Users } from 'lucide-react';
+import { ArrowRight, Shield, Zap, Users } from 'lucide-react';
+import { GoogleLogo } from '@/components/ui/google-logo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -111,7 +112,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   </div>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <Chrome className="h-5 w-5 text-blue-500" />
+                    <GoogleLogo className="h-5 w-5" />
                     <span className="font-medium">Continue with Google</span>
                   </div>
                 )}

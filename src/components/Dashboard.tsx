@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User } from "lucide-react";
+import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User, LogOut } from "lucide-react";
 import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } from "@/hooks/useSupabaseData";
 import AddRecordingModal from "./AddRecordingModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 // import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { Analysis } from "@/lib/supabase";
 
 interface DashboardProps {
@@ -28,6 +29,7 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { signOut, user } = useAuth();
   
   // Analysis notifications disabled per user request
   // useAnalysisNotifications();
@@ -152,6 +154,23 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out successfully",
+        description: "You have been logged out of your account.",
+      });
+    } catch (error) {
+      console.error('Sign out error:', error);
+      toast({
+        title: "Sign out failed",
+        description: "There was an error signing you out. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -190,6 +209,14 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
               <Upload className="h-4 w-4" />
               Add Recording
             </Button>
+            <Button 
+              variant="outline"
+              onClick={handleSignOut}
+              className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </Button>
           </div>
         </div>
       </header>
@@ -221,6 +248,14 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
               >
                 <BarChart3 className="h-4 w-4" />
                 Analytics
+              </Button>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start"
+                onClick={onShowProfile}
+              >
+                <User className="h-4 w-4" />
+                Profile
               </Button>
           </nav>
         </aside>

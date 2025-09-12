@@ -44,6 +44,37 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
     'Other'
   ];
 
+  const positions = [
+    'CEO / Founder',
+    'CTO / Chief Technology Officer',
+    'COO / Chief Operating Officer',
+    'VP of Sales',
+    'VP of Marketing', 
+    'VP of Operations',
+    'Sales Manager',
+    'Sales Director',
+    'Marketing Manager',
+    'Marketing Director',
+    'HR Manager',
+    'HR Director',
+    'Operations Manager',
+    'Operations Director',
+    'Business Development Manager',
+    'Business Development Director',
+    'Customer Success Manager',
+    'Account Manager',
+    'Project Manager',
+    'Product Manager',
+    'Team Lead',
+    'Senior Manager',
+    'Manager',
+    'Coordinator',
+    'Specialist',
+    'Analyst',
+    'Consultant',
+    'Other'
+  ];
+
   const useCases = [
     'Sales Call Analysis',
     'Recruitment Call Analysis', 
@@ -177,7 +208,11 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
             <Card>
               <CardHeader className="text-center">
                 <Avatar className="h-24 w-24 mx-auto mb-4">
-                  <AvatarImage src={user?.user_metadata?.avatar_url} />
+                  <AvatarImage 
+                    src={user?.user_metadata?.avatar_url || user?.user_metadata?.picture} 
+                    alt="Profile picture"
+                    className="object-cover"
+                  />
                   <AvatarFallback className="text-lg">
                     {user?.user_metadata?.full_name?.split(' ').map((n: string) => n[0]).join('') || 
                      user?.email?.charAt(0).toUpperCase()}
@@ -344,13 +379,22 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
                     </div>
                     <div>
                       <Label htmlFor="position">Your Position</Label>
-                      <Input
-                        id="position"
+                      <Select
                         value={formData.position}
-                        onChange={(e) => setFormData(prev => ({ ...prev, position: e.target.value }))}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}
                         disabled={!editing}
-                        placeholder="Enter your position"
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select your position" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {positions.map((position) => (
+                            <SelectItem key={position} value={position}>
+                              {position}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
