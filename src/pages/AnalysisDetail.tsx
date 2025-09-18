@@ -58,6 +58,12 @@ export default function AnalysisDetail() {
     return "text-warning";
   };
 
+  const getSentimentEmoji = (score: number) => {
+    if (score >= 80) return "😊"; // Happy
+    if (score >= 60) return "😐"; // Neutral
+    return "😔"; // Sad/Concerned
+  };
+
   const getScoreColor = (score: number) => {
     if (score >= 85) return "text-success";
     if (score >= 70) return "text-accent-blue";
@@ -72,11 +78,25 @@ export default function AnalysisDetail() {
     return "text-red-500";
   };
 
+  const getEngagementEmoji = (score: number) => {
+    if (score >= 80) return "🔥"; // High engagement
+    if (score >= 60) return "👍"; // Good engagement
+    if (score >= 40) return "👌"; // Moderate engagement
+    return "👎"; // Low engagement
+  };
+
   const getConfidenceColor = (score: number) => {
     if (score >= 8) return "text-success";
     if (score >= 6) return "text-accent-blue";
     if (score >= 4) return "text-warning";
     return "text-red-500";
+  };
+
+  const getConfidenceEmoji = (score: number) => {
+    if (score >= 8) return "💪"; // High confidence
+    if (score >= 6) return "👍"; // Good confidence
+    if (score >= 4) return "🤔"; // Moderate confidence
+    return "😰"; // Low confidence
   };
 
   if (isLoading) {
@@ -135,77 +155,121 @@ export default function AnalysisDetail() {
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8 space-y-8">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-6">
-          <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
+      <div className="w-full px-8 py-8 space-y-8">
+        {/* Summary Cards - Centered */}
+        <div className="flex justify-center">
+          <div className="grid grid-cols-3 gap-8 max-w-6xl">
+          <Card className="hover:shadow-lg transition-shadow duration-200 p-2">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-3">
+                <TrendingUp className="h-6 w-6" />
                 Sentiment
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className={`text-3xl font-bold ${getSentimentColor(analysis.sentiment_score || 0)}`}>
+            <CardContent className="pt-2">
+              <div className={`text-5xl font-bold ${getSentimentColor(analysis.sentiment_score || 0)} flex items-center gap-3 mb-4`}>
+                <span className="text-6xl">{getSentimentEmoji(analysis.sentiment_score || 0)}</span>
                 {analysis.sentiment_score || 0}%
+              </div>
+              <div className="mt-4 w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-500 ${
+                    (analysis.sentiment_score || 0) >= 80 ? 'bg-green-500' : 
+                    (analysis.sentiment_score || 0) >= 60 ? 'bg-blue-500' : 'bg-yellow-500'
+                  }`}
+                  style={{ width: `${analysis.sentiment_score || 0}%` }}
+                ></div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="h-4 w-4" />
+          <Card className="hover:shadow-lg transition-shadow duration-200 p-2">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-3">
+                <Users className="h-6 w-6" />
                 Engagement
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className={`text-3xl font-bold ${getEngagementColor(analysis.engagement_score || 0)}`}>
+            <CardContent className="pt-2">
+              <div className={`text-5xl font-bold ${getEngagementColor(analysis.engagement_score || 0)} flex items-center gap-3 mb-4`}>
+                <span className="text-6xl">{getEngagementEmoji(analysis.engagement_score || 0)}</span>
                 {analysis.engagement_score || 0}%
+              </div>
+              <div className="mt-4 w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-500 ${
+                    (analysis.engagement_score || 0) >= 80 ? 'bg-green-500' : 
+                    (analysis.engagement_score || 0) >= 60 ? 'bg-blue-500' : 
+                    (analysis.engagement_score || 0) >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${analysis.engagement_score || 0}%` }}
+                ></div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Star className="h-4 w-4" />
+          <Card className="hover:shadow-lg transition-shadow duration-200 p-2">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-3">
+                <Star className="h-6 w-6" />
                 Exec Confidence
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className={`text-3xl font-bold ${getConfidenceColor(analysis.confidence_score_executive || 0)}`}>
+            <CardContent className="pt-2">
+              <div className={`text-5xl font-bold ${getConfidenceColor(analysis.confidence_score_executive || 0)} flex items-center gap-3 mb-4`}>
+                <span className="text-6xl">{getConfidenceEmoji(analysis.confidence_score_executive || 0)}</span>
                 {analysis.confidence_score_executive || 0}/10
+              </div>
+              <div className="mt-4 w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-500 ${
+                    (analysis.confidence_score_executive || 0) >= 8 ? 'bg-green-500' : 
+                    (analysis.confidence_score_executive || 0) >= 6 ? 'bg-blue-500' : 
+                    (analysis.confidence_score_executive || 0) >= 4 ? 'bg-yellow-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${((analysis.confidence_score_executive || 0) / 10) * 100}%` }}
+                ></div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Target className="h-4 w-4" />
+          <Card className="hover:shadow-lg transition-shadow duration-200 p-2">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-3">
+                <Target className="h-6 w-6" />
                 Person Confidence
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className={`text-3xl font-bold ${getConfidenceColor(analysis.confidence_score_person || 0)}`}>
+            <CardContent className="pt-2">
+              <div className={`text-5xl font-bold ${getConfidenceColor(analysis.confidence_score_person || 0)} flex items-center gap-3 mb-4`}>
+                <span className="text-6xl">{getConfidenceEmoji(analysis.confidence_score_person || 0)}</span>
                 {analysis.confidence_score_person || 0}/10
+              </div>
+              <div className="mt-4 w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-500 ${
+                    (analysis.confidence_score_person || 0) >= 8 ? 'bg-green-500' : 
+                    (analysis.confidence_score_person || 0) >= 6 ? 'bg-blue-500' : 
+                    (analysis.confidence_score_person || 0) >= 4 ? 'bg-yellow-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${((analysis.confidence_score_person || 0) / 10) * 100}%` }}
+                ></div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="h-4 w-4" />
+          <Card className="hover:shadow-lg transition-shadow duration-200 p-2">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-3">
+                <Users className="h-6 w-6" />
                 Participants
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-accent-blue">
+            <CardContent className="pt-2">
+              <div className="text-5xl font-bold text-accent-blue mb-4">
                 {analysis.participants?.count || 'N/A'}
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-2 text-sm text-muted-foreground">
                 {analysis.participants?.names && (
                   <div>Names: {analysis.participants.names}</div>
                 )}
@@ -213,186 +277,178 @@ export default function AnalysisDetail() {
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
+          <Card className="hover:shadow-lg transition-shadow duration-200 p-2">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-3">
+                <AlertTriangle className="h-6 w-6" />
                 Objections
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <div className="text-2xl font-bold text-warning">
+            <CardContent className="pt-2">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="text-4xl font-bold text-warning">
                   {analysis.objections_raised || 0}
                 </div>
-                <div className="text-sm text-muted-foreground">/</div>
-                <div className="text-2xl font-bold text-success">
+                <div className="text-2xl text-muted-foreground">/</div>
+                <div className="text-4xl font-bold text-success">
                   {analysis.objections_tackled || 0}
                 </div>
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-2 text-sm text-muted-foreground">
                 Raised / Tackled
               </div>
             </CardContent>
           </Card>
+          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column */}
-          <div className="space-y-6">
-            {/* Short Summary */}
-            {analysis.short_summary && (
+        {/* Main Content - Full Width with Proper Sequence */}
+        <div className="max-w-7xl mx-auto space-y-8">
+          
+          {/* 1. Executive Summary - Full Width */}
+          {analysis.short_summary && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Executive Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground leading-relaxed">
+                  {analysis.short_summary}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 2. Next Steps - Full Width */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Next Steps
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {details.next_steps_detailed ? (
+                  details.next_steps_detailed.split(/\d+\)/).filter(Boolean).map((step: string, index: number) => (
+                    <div key={index} className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 bg-accent-blue text-white rounded-full flex items-center justify-center text-xs font-medium">
+                        {index + 1}
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">{step.trim()}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground">
+                    {analysis.next_steps || 'No next steps defined'}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 3. Sentiment Analysis - Full Width */}
+          {details.sentiments_explanation && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Sentiment Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground leading-relaxed">
+                  {details.sentiments_explanation}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 4. Engagement Analysis - Full Width */}
+          {details.engagement_explanation && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Engagement Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground leading-relaxed">
+                  {details.engagement_explanation}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 5. Executive Confidence and Person Confidence - Side by Side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Executive Confidence Explanation */}
+            {details.confidence_explanation_executive && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5" />
-                    Executive Summary
+                    <Star className="h-5 w-5" />
+                    Executive Confidence
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground leading-relaxed">
-                    {analysis.short_summary}
+                    {details.confidence_explanation_executive}
                   </p>
                 </CardContent>
               </Card>
             )}
 
-
-            {/* Next Steps */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  Next Steps
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {details.next_steps_detailed ? (
-                    details.next_steps_detailed.split(/\d+\)/).filter(Boolean).map((step: string, index: number) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-6 h-6 bg-accent-blue text-white rounded-full flex items-center justify-center text-xs font-medium">
-                          {index + 1}
-                        </div>
-                        <p className="text-muted-foreground leading-relaxed">{step.trim()}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-muted-foreground">
-                      {analysis.next_steps || 'No next steps defined'}
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Objections Detected */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Objections Detected
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {details.objections_detected ? (
-                    details.objections_detected.split(/\d+\)/).filter(Boolean).map((objection: string, index: number) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-6 h-6 bg-warning text-white rounded-full flex items-center justify-center text-xs font-medium">
-                          !
-                        </div>
-                        <p className="text-muted-foreground leading-relaxed">{objection.trim()}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-muted-foreground">
-                      {analysis.objections_handled || 'No objections recorded'}
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-
+            {/* Person Confidence Explanation */}
+            {details.confidence_explanation_person && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Person Confidence
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {details.confidence_explanation_person}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Score Explanations */}
-            <div className="space-y-4">
-              {/* Sentiment Explanation */}
-              {details.sentiments_explanation && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5" />
-                      Sentiment Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {details.sentiments_explanation}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
+          {/* 6. Improvements for Team - Moved from Advanced */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Improvements for Team
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {details.improvements_for_team ? (
+                  details.improvements_for_team.split(/\d+\)/).filter(Boolean).map((improvement: string, index: number) => (
+                    <div key={index} className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 bg-success text-white rounded-full flex items-center justify-center text-xs font-medium">
+                        ✓
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">{improvement.trim()}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground">
+                    {analysis.improvements || 'No improvements suggested'}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-              {/* Engagement Explanation */}
-              {details.engagement_explanation && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      Engagement Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {details.engagement_explanation}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Executive Confidence Explanation */}
-              {details.confidence_explanation_executive && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Star className="h-5 w-5" />
-                      Executive Confidence
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {details.confidence_explanation_executive}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Person Confidence Explanation */}
-              {details.confidence_explanation_person && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Target className="h-5 w-5" />
-                      Person Confidence
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {details.confidence_explanation_person}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-
-          </div>
         </div>
 
         {/* Advanced Section Button - Centered */}
@@ -416,84 +472,60 @@ export default function AnalysisDetail() {
           </Button>
         </div>
 
-        {/* Advanced Section Content - Distributed across columns */}
+        {/* Advanced Section Content */}
         {showAdvanced && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Advanced Left Column */}
-            <div className="space-y-6">
-              {/* Evidence Quotes */}
-              {details.evidence_quotes && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MessageSquare className="h-5 w-5" />
-                      Key Evidence Quotes
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-muted p-4 rounded-lg border-l-4 border-accent-blue">
-                      <p className="text-muted-foreground leading-relaxed italic">
-                        "{details.evidence_quotes}"
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Improvements for Team */}
+          <div className="space-y-8">
+            
+            {/* Evidence Quotes - Full Width */}
+            {details.evidence_quotes && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Improvements for Team
+                    <MessageSquare className="h-5 w-5" />
+                    Key Evidence Quotes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-muted p-4 rounded-lg border-l-4 border-accent-blue">
+                    <p className="text-muted-foreground leading-relaxed italic">
+                      "{details.evidence_quotes}"
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Objections Section - Side by Side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Objections Detected - Moved from main content */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5" />
+                    Objections Detected
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {details.improvements_for_team ? (
-                      details.improvements_for_team.split(/\d+\)/).filter(Boolean).map((improvement: string, index: number) => (
+                    {details.objections_detected ? (
+                      details.objections_detected.split(/\d+\)/).filter(Boolean).map((objection: string, index: number) => (
                         <div key={index} className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-6 h-6 bg-success text-white rounded-full flex items-center justify-center text-xs font-medium">
-                            ✓
+                          <div className="flex-shrink-0 w-6 h-6 bg-warning text-white rounded-full flex items-center justify-center text-xs font-medium">
+                            !
                           </div>
-                          <p className="text-muted-foreground leading-relaxed">{improvement.trim()}</p>
+                          <p className="text-muted-foreground leading-relaxed">{objection.trim()}</p>
                         </div>
                       ))
                     ) : (
                       <p className="text-muted-foreground">
-                        {analysis.improvements || 'No improvements suggested'}
+                        {analysis.objections_handled || 'No objections recorded'}
                       </p>
                     )}
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Call Outcome */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Call Outcome
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <p className="text-lg font-medium text-foreground">
-                      {analysis.call_outcome || 'Unknown'}
-                    </p>
-                    {details.call_outcome_rationale && (
-                      <p className="text-muted-foreground leading-relaxed">
-                        {details.call_outcome_rationale}
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Advanced Right Column */}
-            <div className="space-y-6">
-              {/* Objections Handling */}
+              {/* How Objections Were Handled */}
               {details.objections_handling_details && (
                 <Card>
                   <CardHeader>
@@ -509,8 +541,31 @@ export default function AnalysisDetail() {
                   </CardContent>
                 </Card>
               )}
+            </div>
 
-              {/* Call Transcript */}
+            {/* Call Outcome - Full Width */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Call Outcome
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <p className="text-lg font-medium text-foreground">
+                    {analysis.call_outcome || 'Unknown'}
+                  </p>
+                  {details.call_outcome_rationale && (
+                    <p className="text-muted-foreground leading-relaxed">
+                      {details.call_outcome_rationale}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Call Transcript - Full Width */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -529,8 +584,8 @@ export default function AnalysisDetail() {
                 </ScrollArea>
               </CardContent>
             </Card>
+
           </div>
-        </div>
         )}
       </div>
     </div>

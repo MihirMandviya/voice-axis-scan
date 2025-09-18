@@ -48,6 +48,32 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
     return "text-warning";
   };
 
+  const getSentimentEmoji = (score: number) => {
+    if (score >= 80) return "😊"; // Happy
+    if (score >= 60) return "😐"; // Neutral
+    return "😔"; // Sad/Concerned
+  };
+
+  const getEngagementEmoji = (score: number) => {
+    if (score >= 80) return "🔥"; // High engagement
+    if (score >= 60) return "👍"; // Good engagement
+    return "👎"; // Low engagement
+  };
+
+  const getConfidenceEmoji = (score: number) => {
+    if (score >= 8) return "💪"; // High confidence
+    if (score >= 6) return "👍"; // Good confidence
+    if (score >= 4) return "🤔"; // Moderate confidence
+    return "😰"; // Low confidence
+  };
+
+  const getConfidenceColor = (score: number) => {
+    if (score >= 8) return "text-success";
+    if (score >= 6) return "text-accent-blue";
+    if (score >= 4) return "text-warning";
+    return "text-destructive";
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
@@ -274,7 +300,7 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                   <CardContent>
                     <div className="text-2xl font-bold">{kpiData.totalCalls}</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-success">+12%</span> from last month
+                      Total recorded calls
                     </p>
                   </CardContent>
                 </Card>
@@ -289,7 +315,7 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                       {kpiData.avgSentiment.toFixed(0)}%
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-success">+5%</span> from last week
+                      Average call sentiment score
                     </p>
                   </CardContent>
                 </Card>
@@ -304,7 +330,7 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                       {kpiData.avgEngagement.toFixed(0)}%
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-success">+8%</span> from last week
+                      Average engagement level
                     </p>
                   </CardContent>
                 </Card>
@@ -317,7 +343,7 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                   <CardContent>
                     <div className="text-2xl font-bold text-warning">{kpiData.objectionsHandled}</div>
                     <p className="text-xs text-muted-foreground">
-                      <span className="text-success">+15%</span> handling rate
+                      Total objections addressed
                     </p>
                   </CardContent>
                 </Card>
@@ -591,25 +617,29 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                                 <>
                                   <div className="text-center">
                                     <p className="text-xs text-muted-foreground">Sentiment</p>
-                                    <p className={`font-medium ${getSentimentColor(analysis.sentiment_score || 0)}`}>
+                                    <p className={`font-medium ${getSentimentColor(analysis.sentiment_score || 0)} flex items-center justify-center gap-1`}>
+                                      <span className="text-lg">{getSentimentEmoji(analysis.sentiment_score || 0)}</span>
                                       {analysis.sentiment_score || 0}%
                                     </p>
                                   </div>
                                   <div className="text-center">
                                     <p className="text-xs text-muted-foreground">Engagement</p>
-                                    <p className="font-medium text-accent-blue">
+                                    <p className="font-medium text-accent-blue flex items-center justify-center gap-1">
+                                      <span className="text-lg">{getEngagementEmoji(analysis.engagement_score || 0)}</span>
                                       {analysis.engagement_score || 0}%
                                     </p>
                                   </div>
                                   <div className="text-center">
                                     <p className="text-xs text-muted-foreground">Exec Conf.</p>
-                                    <p className="font-medium text-success">
+                                    <p className={`font-medium ${getConfidenceColor(analysis.confidence_score_executive || 0)} flex items-center justify-center gap-1`}>
+                                      <span className="text-lg">{getConfidenceEmoji(analysis.confidence_score_executive || 0)}</span>
                                       {analysis.confidence_score_executive || 0}/10
                                     </p>
                                   </div>
                                   <div className="text-center">
                                     <p className="text-xs text-muted-foreground">Person Conf.</p>
-                                    <p className="font-medium text-accent-blue">
+                                    <p className={`font-medium ${getConfidenceColor(analysis.confidence_score_person || 0)} flex items-center justify-center gap-1`}>
+                                      <span className="text-lg">{getConfidenceEmoji(analysis.confidence_score_person || 0)}</span>
                                       {analysis.confidence_score_person || 0}/10
                                     </p>
                                   </div>

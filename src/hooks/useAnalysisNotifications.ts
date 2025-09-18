@@ -56,9 +56,22 @@ export function useAnalysisNotifications() {
         const sentimentScore = (analysis.sentiment_score || 0).toFixed(0);
         const engagementScore = (analysis.engagement_score || 0).toFixed(0);
         
+        // Get emojis based on scores
+        const getSentimentEmoji = (score: number) => {
+          if (score >= 80) return "😊";
+          if (score >= 60) return "😐";
+          return "😔";
+        };
+        
+        const getEngagementEmoji = (score: number) => {
+          if (score >= 80) return "🔥";
+          if (score >= 60) return "👍";
+          return "👎";
+        };
+
         toast({
           title: "🎉 Analysis Complete!",
-          description: `${fileName} - Sentiment: ${sentimentScore}%, Engagement: ${engagementScore}%`,
+          description: `${fileName} - Sentiment: ${getSentimentEmoji(analysis.sentiment_score || 0)} ${sentimentScore}%, Engagement: ${getEngagementEmoji(analysis.engagement_score || 0)} ${engagementScore}%`,
           duration: 6000,
         });
       }

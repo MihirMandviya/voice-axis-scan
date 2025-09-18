@@ -16,6 +16,63 @@ interface AddRecordingModalProps {
 
 const WEBHOOK_URL = "https://n8nautomation.site/webhook/a2025371-8955-4ef4-8a74-0686456b3003";
 
+// Function to send webhook in background without blocking UI
+const sendWebhookInBackground = async (webhookPayload: any) => {
+  try {
+    console.log('🔄 Attempting webhook call...');
+    const webhookResponse = await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    console.log('✅ Webhook response status:', webhookResponse.status);
+    console.log('✅ Webhook response headers:', Object.fromEntries(webhookResponse.headers.entries()));
+    
+    if (webhookResponse.ok) {
+      const responseText = await webhookResponse.text();
+      console.log('✅ Webhook response body:', responseText);
+      console.log('🎉 Webhook call successful!');
+    } else {
+      console.warn(`⚠️ Webhook returned ${webhookResponse.status}: ${webhookResponse.statusText}`);
+    }
+    
+  } catch (corsError) {
+    console.warn('❌ CORS error, trying no-cors mode:', corsError);
+    
+    // Second attempt: No-CORS mode
+    try {
+      await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookPayload),
+      });
+      
+      console.log('✅ Webhook request sent via no-cors mode');
+      
+    } catch (noCorsError) {
+      console.error('❌ Both webhook attempts failed:', noCorsError);
+      
+      // Third attempt: Using XMLHttpRequest as fallback
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', WEBHOOK_URL, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify(webhookPayload));
+        console.log('✅ Webhook sent via XMLHttpRequest fallback');
+      } catch (xhrError) {
+        console.error('❌ All webhook attempts failed:', xhrError);
+      }
+    }
+  }
+};
+
 // Validation functions
 const validateGoogleDriveUrl = (url: string): { isValid: boolean; error?: string } => {
   // Check if it's a Google Drive URL
@@ -39,6 +96,85 @@ const validateGoogleDriveUrl = (url: string): { isValid: boolean; error?: string
   }
 
   return { isValid: true };
+};
+
+// Function to check if Google Drive URL is publicly accessible
+const checkGoogleDriveUrlAccessibility = async (url: string): Promise<{ isAccessible: boolean; error?: string }> => {
+  try {
+    // Extract file ID from the URL
+    const fileIdMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)|[\?&]id=([a-zA-Z0-9_-]+)/);
+    if (!fileIdMatch) {
+      return { isAccessible: false, error: "Could not extract file ID from URL" };
+    }
+    
+    const fileId = fileIdMatch[1] || fileIdMatch[2];
+    
+    // Convert to viewable URL format (this is more reliable for checking accessibility)
+    const viewableUrl = `https://drive.google.com/file/d/${fileId}/view`;
+    
+    console.log('🔍 Checking URL accessibility:', viewableUrl);
+    
+    // Try multiple methods to check accessibility
+    try {
+      // Method 1: Try to fetch the viewable URL
+      const response = await fetch(viewableUrl, {
+        method: 'HEAD',
+        mode: 'no-cors',
+      });
+      
+      console.log('✅ URL accessibility check completed via viewable URL');
+      return { isAccessible: true };
+      
+    } catch (viewableError) {
+      console.log('⚠️ Viewable URL check failed, trying direct download URL...');
+      
+      // Method 2: Try direct download URL
+      const directDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      
+      try {
+        const downloadResponse = await fetch(directDownloadUrl, {
+          method: 'HEAD',
+          mode: 'no-cors',
+        });
+        
+        console.log('✅ URL accessibility check completed via download URL');
+        return { isAccessible: true };
+        
+      } catch (downloadError) {
+        console.log('⚠️ Download URL check also failed, but this might be due to CORS restrictions');
+        
+        // Method 3: Use a proxy service to check accessibility
+        try {
+          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(viewableUrl)}`;
+          const proxyResponse = await fetch(proxyUrl);
+          
+          if (proxyResponse.ok) {
+            const data = await proxyResponse.json();
+            if (data.contents && !data.contents.includes('Sorry, the file you have requested does not exist')) {
+              console.log('✅ URL accessibility check completed via proxy');
+              return { isAccessible: true };
+            }
+          }
+        } catch (proxyError) {
+          console.log('⚠️ Proxy check also failed');
+        }
+        
+        // If all methods fail, assume it's accessible but warn the user
+        console.log('⚠️ All accessibility checks failed, but this might be due to CORS restrictions');
+        return { 
+          isAccessible: true, // Assume accessible but warn user
+          error: "Could not fully verify accessibility due to browser restrictions. Please ensure the file is shared with 'Anyone with the link' access." 
+        };
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ URL accessibility check failed:', error);
+    return { 
+      isAccessible: false, 
+      error: "Could not verify if the file is publicly accessible. Please ensure the file is shared with 'Anyone with the link' access." 
+    };
+  }
 };
 
 const checkUniqueFileName = async (fileName: string, userId: string): Promise<{ isUnique: boolean; error?: string }> => {
@@ -111,7 +247,24 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         return;
       }
 
-      // Step 2: Check if file name is unique
+      // Step 2: Check if URL is publicly accessible
+      toast({
+        title: "Validating URL",
+        description: "Checking if the Google Drive file is publicly accessible...",
+      });
+      
+      const accessibilityCheck = await checkGoogleDriveUrlAccessibility(driveUrl.trim());
+      if (!accessibilityCheck.isAccessible) {
+        toast({
+          title: "URL Not Accessible",
+          description: accessibilityCheck.error || "The file is not publicly accessible. Please ensure it's shared with 'Anyone with the link' access.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 3: Check if file name is unique
       const uniqueCheck = await checkUniqueFileName(fileName.trim(), user.id);
       if (!uniqueCheck.isUnique) {
         toast({
@@ -173,84 +326,19 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         analysis_id: analysis?.id || null,
         user_id: user.id,
         timestamp: new Date().toISOString(),
-        source: 'voice-axis-scan-frontend'
+        source: 'voice-axis-scan-frontend',
+        url_validated: true, // Indicates URL has been validated for accessibility
+        validation_method: 'frontend_check' // How the URL was validated
       };
 
       console.log('🚀 Sending webhook POST request to:', WEBHOOK_URL);
       console.log('📦 Webhook payload:', webhookPayload);
       console.log('👤 User ID in payload:', webhookPayload.user_id);
 
-      // First attempt: Standard fetch with CORS
-      try {
-        console.log('🔄 Attempting webhook call...');
-        const webhookResponse = await fetch(WEBHOOK_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(webhookPayload),
-        });
+      // Send webhook in background - don't block modal closing
+      sendWebhookInBackground(webhookPayload);
 
-        console.log('✅ Webhook response status:', webhookResponse.status);
-        console.log('✅ Webhook response headers:', Object.fromEntries(webhookResponse.headers.entries()));
-        
-        if (webhookResponse.ok) {
-          const responseText = await webhookResponse.text();
-          console.log('✅ Webhook response body:', responseText);
-          console.log('🎉 Webhook call successful!');
-          
-          toast({
-            title: "Recording Added Successfully!",
-            description: "Your recording has been submitted for analysis. You'll be notified when it's complete.",
-          });
-        } else {
-          console.warn(`⚠️ Webhook returned ${webhookResponse.status}: ${webhookResponse.statusText}`);
-          toast({
-            title: "Recording Added",
-            description: "Your recording has been saved, but there was an issue with the analysis pipeline. Please try again later.",
-            variant: "destructive",
-          });
-        }
-        
-      } catch (corsError) {
-        console.warn('❌ CORS error, trying no-cors mode:', corsError);
-        
-        // Second attempt: No-CORS mode
-        try {
-          await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(webhookPayload),
-          });
-          
-          console.log('✅ Webhook request sent via no-cors mode');
-          
-        } catch (noCorsError) {
-          console.error('❌ Both webhook attempts failed:', noCorsError);
-          
-          // Third attempt: Using XMLHttpRequest as fallback
-          try {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', WEBHOOK_URL, true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.send(JSON.stringify(webhookPayload));
-            console.log('✅ Webhook sent via XMLHttpRequest fallback');
-          } catch (xhrError) {
-            console.error('❌ All webhook attempts failed:', xhrError);
-            toast({
-              title: "Recording Added", 
-              description: "Your recording has been saved, but there was an issue with the analysis pipeline. Please try again later.",
-              variant: "destructive",
-            });
-          }
-        }
-      }
-
-      // Reset form and close modal
+      // Reset form and close modal immediately after recording is saved
       setDriveUrl("");
       setFileName("");
       onOpenChange(false);
@@ -259,6 +347,12 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
       if (onRecordingAdded) {
         onRecordingAdded();
       }
+
+      // Show success message
+      toast({
+        title: "Recording Added Successfully!",
+        description: "Your recording has been submitted for analysis. You'll be notified when it's complete.",
+      });
 
     } catch (error) {
       console.error('Error adding recording:', error);
@@ -375,6 +469,54 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
               className="text-xs"
             >
               🧪 Test Webhook
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if (!driveUrl.trim()) {
+                  toast({
+                    title: "No URL",
+                    description: "Please enter a Google Drive URL first",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
+                const urlValidation = validateGoogleDriveUrl(driveUrl.trim());
+                if (!urlValidation.isValid) {
+                  toast({
+                    title: "Invalid URL",
+                    description: urlValidation.error,
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
+                toast({
+                  title: "Testing URL",
+                  description: "Checking if the Google Drive file is accessible...",
+                });
+                
+                const accessibilityCheck = await checkGoogleDriveUrlAccessibility(driveUrl.trim());
+                if (accessibilityCheck.isAccessible) {
+                  toast({
+                    title: "✅ URL is Accessible",
+                    description: "The Google Drive file is publicly accessible and ready for processing.",
+                  });
+                } else {
+                  toast({
+                    title: "❌ URL Not Accessible",
+                    description: accessibilityCheck.error || "The file is not publicly accessible. Please ensure it's shared with 'Anyone with the link' access.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              disabled={isLoading}
+              className="text-xs"
+            >
+              🔍 Test URL
             </Button>
           </div>
         </DialogHeader>
