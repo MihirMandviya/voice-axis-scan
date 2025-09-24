@@ -372,65 +372,6 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
     return match ? match[1] : url;
   };
 
-  // Test webhook function for debugging
-  const testWebhook = async () => {
-    if (!user) return;
-    
-    const testPayload = {
-      url: "https://drive.google.com/test",
-      name: "test_recording.mp3",
-      recording_id: "test-recording-id",
-      analysis_id: "test-analysis-id",
-      user_id: user.id,
-      timestamp: new Date().toISOString(),
-      source: 'voice-axis-scan-frontend-test'
-    };
-
-    console.log('🧪 Testing webhook with payload:', testPayload);
-
-    try {
-      const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(testPayload),
-      });
-      
-      console.log('🧪 Test webhook response status:', response.status);
-      console.log('🧪 Test webhook response:', await response.text());
-      
-      toast({
-        title: "Webhook Test",
-        description: `Test sent! Check console for details. Status: ${response.status}`,
-      });
-    } catch (error) {
-      console.error('🧪 Test webhook failed:', error);
-      
-      // Try no-cors mode
-      try {
-        await fetch(WEBHOOK_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(testPayload),
-        });
-        
-        toast({
-          title: "Webhook Test",
-          description: "Test sent via no-cors mode! Check n8n for receipt.",
-        });
-      } catch (noCorsError) {
-        toast({
-          title: "Webhook Test Failed",
-          description: "Could not send test request",
-          variant: "destructive",
-        });
-      }
-    }
-  };
 
   const handleCancel = () => {
     setDriveUrl("");
@@ -458,67 +399,6 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
             Add a new recording by providing the Google Drive URL and file name. The recording will be queued for analysis by <span className="font-semibold text-accent-blue">Tasknova</span> AI.
           </DialogDescription>
           
-          {/* Debug Test Button - Remove in production */}
-          <div className="mt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={testWebhook}
-              disabled={isLoading}
-              className="text-xs"
-            >
-              🧪 Test Webhook
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                if (!driveUrl.trim()) {
-                  toast({
-                    title: "No URL",
-                    description: "Please enter a Google Drive URL first",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                
-                const urlValidation = validateGoogleDriveUrl(driveUrl.trim());
-                if (!urlValidation.isValid) {
-                  toast({
-                    title: "Invalid URL",
-                    description: urlValidation.error,
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                
-                toast({
-                  title: "Testing URL",
-                  description: "Checking if the Google Drive file is accessible...",
-                });
-                
-                const accessibilityCheck = await checkGoogleDriveUrlAccessibility(driveUrl.trim());
-                if (accessibilityCheck.isAccessible) {
-                  toast({
-                    title: "✅ URL is Accessible",
-                    description: "The Google Drive file is publicly accessible and ready for processing.",
-                  });
-                } else {
-                  toast({
-                    title: "❌ URL Not Accessible",
-                    description: accessibilityCheck.error || "The file is not publicly accessible. Please ensure it's shared with 'Anyone with the link' access.",
-                    variant: "destructive",
-                  });
-                }
-              }}
-              disabled={isLoading}
-              className="text-xs"
-            >
-              🔍 Test URL
-            </Button>
-          </div>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
