@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase, Recording, Analysis, MetricsAggregate } from '@/lib/supabase'
+import { supabase, Recording, Analysis, MetricsAggregate, Lead, LeadGroup } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function useRecordings() {
@@ -244,6 +244,235 @@ export function useDeleteRecording() {
     },
     onError: (error) => {
       console.error('Failed to delete recording:', error)
+    }
+  })
+}
+
+// Lead Groups Hooks
+export function useLeadGroups() {
+  const { user } = useAuth()
+  
+  return useQuery({
+    queryKey: ['lead_groups', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('lead_groups')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      return data as LeadGroup[]
+    },
+    enabled: !!user
+  })
+}
+
+export function useCreateLeadGroup() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async (groupData: { group_name: string }) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('lead_groups')
+        .insert([{ ...groupData, user_id: user.id }])
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as LeadGroup
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead_groups'] })
+    }
+  })
+}
+
+export function useUpdateLeadGroup() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ id, group_name }: { id: string; group_name: string }) => {
+      const { data, error } = await supabase
+        .from('lead_groups')
+        .update({ group_name })
+        .eq('id', id)
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as LeadGroup
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead_groups'] })
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+export function useDeleteLeadGroup() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('lead_groups')
+        .delete()
+        .eq('id', id)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead_groups'] })
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+// Leads Hooks
+export function useLeads(groupId?: string) {
+  const { user } = useAuth()
+  
+  return useQuery({
+    queryKey: ['leads', user?.id, groupId],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
+      let query = supabase
+        .from('leads')
+        .select(`
+          *,
+          lead_groups (
+            id,
+            group_name
+          )
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (groupId) {
+        query = query.eq('group_id', groupId)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) throw error
+      return data as Lead[]
+    },
+    enabled: !!user
+  })
+}
+
+export function useCreateLead() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async (leadData: { 
+      name: string; 
+      email: string; 
+      contact: string; 
+      description?: string; 
+      other?: any; 
+      group_id?: string 
+    }) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('leads')
+        .insert([{ ...leadData, user_id: user.id }])
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Lead
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+export function useUpdateLead() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      ...updateData 
+    }: { 
+      id: string; 
+      name?: string; 
+      email?: string; 
+      contact?: string; 
+      description?: string; 
+      other?: any; 
+      group_id?: string 
+    }) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Lead
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+export function useDeleteLead() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', id)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+export function useBulkCreateLeads() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async (leadsData: Array<{ 
+      name: string; 
+      email: string; 
+      contact: string; 
+      description?: string; 
+      other?: any; 
+      group_id?: string 
+    }>) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const leadsWithUserId = leadsData.map(lead => ({ ...lead, user_id: user.id }))
+      
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(leadsWithUserId)
+        .select()
+      
+      if (error) throw error
+      return data as Lead[]
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
     }
   })
 }

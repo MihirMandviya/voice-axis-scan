@@ -66,3 +66,25 @@ export interface UserProfile {
   created_at: string
   updated_at: string
 }
+
+export interface LeadGroup {
+  id: string
+  user_id: string
+  group_name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Lead {
+  id: string
+  user_id: string
+  name: string
+  email: string
+  contact: string
+  description?: string
+  other?: any // JSON object for additional fields
+  group_id?: string
+  created_at: string
+  updated_at: string
+  lead_groups?: LeadGroup // Joined data
+}

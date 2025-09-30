@@ -435,7 +435,7 @@ export default function AnalysisDetail() {
                   details.improvements_for_team.split(/\d+\)/).filter(Boolean).map((improvement: string, index: number) => (
                     <div key={index} className="flex items-start gap-3">
                       <div className="flex-shrink-0 w-6 h-6 bg-success text-white rounded-full flex items-center justify-center text-xs font-medium">
-                        ✓
+                        {index + 1}
                       </div>
                       <p className="text-muted-foreground leading-relaxed">{improvement.trim()}</p>
                     </div>

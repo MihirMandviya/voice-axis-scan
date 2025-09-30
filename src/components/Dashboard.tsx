@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User, LogOut } from "lucide-react";
+import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User, LogOut, UserPlus, FolderOpen, FileSpreadsheet } from "lucide-react";
 import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } from "@/hooks/useSupabaseData";
 import AddRecordingModal from "./AddRecordingModal";
+import AllLeadsPage from "./AllLeadsPage";
+import LeadGroupsPage from "./LeadGroupsPage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 // import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
@@ -37,7 +39,7 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
   // Handle tab parameter from URL
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && ['overview', 'recordings'].includes(tab)) {
+    if (tab && ['overview', 'recordings', 'analytics', 'leads'].includes(tab)) {
       setSelectedTab(tab);
     }
   }, [searchParams]);
@@ -275,6 +277,17 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                 <BarChart3 className="h-4 w-4" />
                 Analytics
               </Button>
+              
+              {/* Leads Section */}
+              <Button 
+                variant={selectedTab === "leads" ? "accent" : "ghost"} 
+                className="w-full justify-start"
+                onClick={() => setSelectedTab("leads")}
+              >
+                <UserPlus className="h-4 w-4" />
+                Leads
+              </Button>
+              
               <Button 
                 variant="ghost" 
                 className="w-full justify-start"
@@ -863,6 +876,37 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
                 </Card>
 
 
+              </div>
+            </TabsContent>
+
+            {/* Unified Leads Tab */}
+            <TabsContent value="leads" className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h1 className="text-3xl font-bold text-foreground">Lead Management</h1>
+                </div>
+                <Tabs defaultValue="all-leads" className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <TabsList>
+                      <TabsTrigger value="all-leads" className="flex items-center gap-2">
+                        <UserPlus className="h-4 w-4" />
+                        All Leads
+                      </TabsTrigger>
+                      <TabsTrigger value="lead-groups" className="flex items-center gap-2">
+                        <FolderOpen className="h-4 w-4" />
+                        Groups
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                  
+                  <TabsContent value="all-leads" className="pt-4">
+                    <AllLeadsPage />
+                  </TabsContent>
+                  
+                  <TabsContent value="lead-groups" className="pt-4">
+                    <LeadGroupsPage />
+                  </TabsContent>
+                </Tabs>
               </div>
             </TabsContent>
           </Tabs>
