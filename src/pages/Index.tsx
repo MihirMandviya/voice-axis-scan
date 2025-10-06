@@ -7,11 +7,18 @@ import Dashboard from "@/components/Dashboard";
 import ProfilePage from "@/components/ProfilePage";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import AuthModal from "@/components/AuthModal";
+import RoleSelection from "@/components/auth/RoleSelection";
+import SimpleAdminSignup from "@/components/auth/SimpleAdminSignup";
+import AdminLogin from "@/components/auth/AdminLogin";
+import LoginOptions from "@/components/auth/LoginOptions";
+import CompanyOnboarding from "@/components/auth/CompanyOnboarding";
+import ManagerLogin from "@/components/auth/ManagerLogin";
+import EmployeeLogin from "@/components/auth/EmployeeLogin";
 
-type ViewType = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'profile';
+type ViewType = 'landing' | 'role-selection' | 'admin-signup' | 'admin-login' | 'login-options' | 'company-onboarding' | 'manager-login' | 'employee-login' | 'auth' | 'onboarding' | 'dashboard' | 'profile';
 
 const Index = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, userRole, company, loading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('landing');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -27,16 +34,72 @@ const Index = () => {
 
   // Handle authentication state changes
   useEffect(() => {
-    if (authLoading) return;
+    console.log('Auth state changed:', { 
+      authLoading, 
+      user: !!user, 
+      userRole: !!userRole, 
+      company: !!company,
+      userRoleData: userRole,
+      companyData: company,
+      currentView
+    });
+
+    if (authLoading) {
+      console.log('Still loading auth...');
+      return;
+    }
 
     if (!user) {
+      console.log('No user, going to landing');
       setCurrentView('landing');
       return;
     }
 
-    // User is authenticated, check if they need onboarding
-    fetchUserProfile();
-  }, [user, authLoading]);
+    // User is authenticated, check their role and company status
+    if (userRole && company) {
+      console.log('User has role and company, going to dashboard');
+      console.log('Role data:', userRole);
+      console.log('Company data:', company);
+      setCurrentView('dashboard');
+    } else if (userRole && !company) {
+      console.log('User has role but no company, going to company onboarding');
+      console.log('Role data:', userRole);
+      setCurrentView('company-onboarding');
+    } else if (!userRole) {
+      // Check if this is a new user or an existing user with missing data
+      console.log('User authenticated but no role, checking if new user or data issue');
+      console.log('User ID:', user?.id);
+      
+      // Check if user has any existing data in the database
+      // If they have a profile but no role, it might be a data issue
+      // If they have no profile at all, they're likely a new user
+      console.log('Checking user profile to determine if new user...');
+      
+      // Check if user has any existing data in the database
+      // If they have a profile but no role, it might be a data issue
+      // If they have no profile at all, they're likely a new user
+      console.log('Checking user profile to determine if new user...');
+      
+      // Check if user has any existing data in the database
+      // If they have a profile but no role, it might be a data issue
+      // If they have no profile at all, they're likely a new user
+      console.log('Checking user profile to determine if new user...');
+      
+      // Check if user has any existing data in the database
+      // If they have a profile but no role, it might be a data issue
+      // If they have no profile at all, they're likely a new user
+      console.log('Checking user profile to determine if new user...');
+      
+      // For now, assume it's a new user and redirect to company onboarding
+      // TODO: Add better logic to distinguish between new users and data issues
+      console.log('Assuming new user, going to company onboarding');
+      setCurrentView('company-onboarding');
+    } else {
+      console.log('Unknown state, staying on current view');
+      console.log('Current state:', { userRole, company });
+      // Don't change view if we're not sure about the state
+    }
+  }, [user, userRole, company, authLoading]);
 
   const fetchUserProfile = async () => {
     if (!user) return;
@@ -73,7 +136,43 @@ const Index = () => {
   };
 
   const handleGetStarted = () => {
-    setCurrentView('auth');
+    setCurrentView('role-selection');
+  };
+
+  const handleSignup = () => {
+    setCurrentView('admin-signup');
+  };
+
+  const handleLoginOptions = () => {
+    setCurrentView('login-options');
+  };
+
+  const handleAdminLogin = () => {
+    setCurrentView('admin-login');
+  };
+
+  const handleManagerLogin = () => {
+    setCurrentView('manager-login');
+  };
+
+  const handleEmployeeLogin = () => {
+    setCurrentView('employee-login');
+  };
+
+  const handleAdminSignupComplete = () => {
+    setCurrentView('company-onboarding');
+  };
+
+  const handleCompanyOnboardingComplete = () => {
+    setCurrentView('dashboard');
+  };
+
+  const handleManagerLoginComplete = () => {
+    setCurrentView('dashboard');
+  };
+
+  const handleEmployeeLoginComplete = () => {
+    setCurrentView('dashboard');
   };
 
   const handleOnboardingComplete = () => {
@@ -95,6 +194,9 @@ const Index = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading...</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {authLoading ? 'Authenticating...' : 'Loading profile...'}
+          </p>
         </div>
       </div>
     );
@@ -104,6 +206,40 @@ const Index = () => {
   switch (currentView) {
     case 'landing':
       return <LandingPage onGetStarted={handleGetStarted} />;
+    
+    case 'role-selection':
+      return (
+        <RoleSelection
+          onSignup={handleSignup}
+          onLogin={handleLoginOptions}
+          onBack={() => setCurrentView('landing')}
+        />
+      );
+    
+    case 'admin-signup':
+      return <SimpleAdminSignup onComplete={handleAdminSignupComplete} onBack={() => setCurrentView('role-selection')} />;
+    
+    case 'admin-login':
+      return <AdminLogin onComplete={handleAdminSignupComplete} onBack={() => setCurrentView('login-options')} />;
+    
+    case 'login-options':
+      return (
+        <LoginOptions
+          onAdminLogin={handleAdminLogin}
+          onManagerLogin={handleManagerLogin}
+          onEmployeeLogin={handleEmployeeLogin}
+          onBack={() => setCurrentView('role-selection')}
+        />
+      );
+    
+    case 'company-onboarding':
+      return <CompanyOnboarding onComplete={handleCompanyOnboardingComplete} onBack={() => setCurrentView('admin-signup')} />;
+    
+    case 'manager-login':
+      return <ManagerLogin onComplete={handleManagerLoginComplete} onBack={() => setCurrentView('login-options')} />;
+    
+    case 'employee-login':
+      return <EmployeeLogin onComplete={handleEmployeeLoginComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'auth':
       return (

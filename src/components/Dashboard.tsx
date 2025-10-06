@@ -9,6 +9,9 @@ import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } fro
 import AddRecordingModal from "./AddRecordingModal";
 import AllLeadsPage from "./AllLeadsPage";
 import LeadGroupsPage from "./LeadGroupsPage";
+import AdminDashboard from "./dashboards/AdminDashboard";
+import ManagerDashboard from "./dashboards/ManagerDashboard";
+import EmployeeDashboard from "./dashboards/EmployeeDashboard";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 // import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
@@ -21,6 +24,34 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onShowProfile }: DashboardProps) {
+  const { userRole } = useAuth();
+  
+  // Debug logging
+  console.log('Dashboard - userRole:', userRole);
+  console.log('Dashboard - userRole?.role:', userRole?.role);
+  
+  // Route to appropriate dashboard based on user role
+  if (userRole?.role === 'admin') {
+    console.log('Routing to AdminDashboard');
+    return <AdminDashboard />;
+  }
+  
+  if (userRole?.role === 'manager') {
+    console.log('Routing to ManagerDashboard');
+    return <ManagerDashboard />;
+  }
+  
+  if (userRole?.role === 'employee') {
+    console.log('Routing to EmployeeDashboard');
+    return <EmployeeDashboard />;
+  }
+  
+  // Fallback to original dashboard if role is not recognized
+  console.log('No role found, routing to OriginalDashboard');
+  return <OriginalDashboard onShowProfile={onShowProfile} />;
+}
+
+function OriginalDashboard({ onShowProfile }: DashboardProps) {
   const [selectedTab, setSelectedTab] = useState("overview");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchParams] = useSearchParams();

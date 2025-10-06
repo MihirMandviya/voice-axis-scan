@@ -6,8 +6,8 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    port: 3000,
-    strictPort: false, // Allow Vite to try other ports if 3000 is in use
+    port: 8081,
+    strictPort: false, // Allow Vite to try other ports if 8081 is in use
   },
   plugins: [
     react({

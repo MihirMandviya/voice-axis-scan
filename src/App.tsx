@@ -8,6 +8,8 @@ import Index from "./pages/Index";
 import AnalysisDetail from "./pages/AnalysisDetail";
 import NotFound from "./pages/NotFound";
 import GroupPage from "./pages/GroupPage";
+import AuthCallback from "./pages/AuthCallback";
+import TestSignup from "./components/auth/TestSignup";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +22,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/test-signup" element={<TestSignup />} />
             <Route path="/analysis/:id" element={<AnalysisDetail />} />
             <Route path="/group/:groupId" element={<GroupPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
