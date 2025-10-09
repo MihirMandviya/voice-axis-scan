@@ -832,7 +832,7 @@ export default function AdminDashboard() {
             />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
-              <p className="text-muted-foreground">{company?.name}</p>
+              <p className="text-muted-foreground">Welcome, {user?.user_metadata?.full_name || 'Admin'} • {company?.name}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
