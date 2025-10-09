@@ -293,12 +293,13 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         throw new Error(`Database error: ${dbError.message}`);
       }
 
-      // Step 4: Create corresponding analysis record
+      // Step 4: Create analysis record immediately (n8n will update it with results)
       const { data: analysis, error: analysisError } = await supabase
         .from('analyses')
         .insert({
           recording_id: recording.id,
           user_id: user.id,
+          status: 'pending',
           sentiment_score: null,
           engagement_score: null,
           confidence_score_executive: null,
@@ -318,7 +319,7 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         // Don't throw error - continue with webhook even if analysis creation fails
       }
 
-      // Step 5: Send to webhook - Multiple attempts for reliability
+      // Step 5: Send to webhook - n8n will update the analysis record
       const webhookPayload = {
         url: driveUrl,
         name: fileName,
