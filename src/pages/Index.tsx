@@ -139,6 +139,10 @@ const Index = () => {
     setCurrentView('role-selection');
   };
 
+  const handleLogin = () => {
+    setCurrentView('login-options');
+  };
+
   const handleSignup = () => {
     setCurrentView('admin-signup');
   };
@@ -205,7 +209,7 @@ const Index = () => {
   // Render based on current view
   switch (currentView) {
     case 'landing':
-      return <LandingPage onGetStarted={handleGetStarted} />;
+      return <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />;
     
     case 'role-selection':
       return (
@@ -244,7 +248,7 @@ const Index = () => {
     case 'auth':
       return (
         <>
-          <LandingPage onGetStarted={handleGetStarted} />
+          <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />
           <AuthModal 
             isOpen={true} 
             onClose={() => setCurrentView('landing')} 
@@ -262,7 +266,7 @@ const Index = () => {
       return <Dashboard onShowProfile={handleShowProfile} />;
     
     default:
-      return <LandingPage onGetStarted={handleGetStarted} />;
+      return <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />;
   }
 };
 

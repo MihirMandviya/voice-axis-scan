@@ -5,9 +5,11 @@ import { CheckCircle, Upload, BarChart3, Users, Zap, Shield, ArrowRight } from "
 
 interface LandingPageProps {
   onGetStarted: () => void;
+  onLogin: () => void;
+  onSignup: () => void;
 }
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, onLogin, onSignup }: LandingPageProps) {
 
   const features = [
     {
@@ -69,13 +71,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <div className="flex items-center space-x-4">
               <Button 
                 variant="ghost" 
-                onClick={onGetStarted}
+                onClick={onLogin}
                 className="text-gray-700 hover:text-accent-blue"
               >
                 Log In
               </Button>
               <Button 
-                onClick={onGetStarted}
+                onClick={onSignup}
                 className="bg-accent-blue text-white hover:bg-accent-blue/90"
               >
                 Sign Up

@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import CallHistoryManager from "@/components/CallHistoryManager";
 import { 
   Building, 
   Users, 
@@ -43,7 +44,10 @@ import {
   AlertTriangle,
   Save,
   X,
-  RefreshCw
+  RefreshCw,
+  History,
+  BarChart3,
+  Clock
 } from "lucide-react";
 
 interface User {
@@ -80,6 +84,8 @@ export default function AdminDashboard() {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
+  const [calls, setCalls] = useState<any[]>([]);
+  const [analyses, setAnalyses] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSidebarItem, setActiveSidebarItem] = useState('overview');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
@@ -101,6 +107,17 @@ export default function AdminDashboard() {
   const [showEmployeePassword, setShowEmployeePassword] = useState(false);
   const [showUserDetailsPassword, setShowUserDetailsPassword] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isEditingCompany, setIsEditingCompany] = useState(false);
+  const [profileData, setProfileData] = useState({
+    full_name: '',
+    email: '',
+  });
+  const [companyData, setCompanyData] = useState({
+    name: '',
+    email: '',
+    industry: '',
+  });
   
   const [newUser, setNewUser] = useState({
     email: "",
@@ -144,6 +161,21 @@ export default function AdminDashboard() {
       fetchUsers();
     }
   }, [userRole, company]);
+
+  // Initialize profile and company data
+  useEffect(() => {
+    if (user && company) {
+      setProfileData({
+        full_name: user.user_metadata?.full_name || '',
+        email: user.email || '',
+      });
+      setCompanyData({
+        name: company.name || '',
+        email: company.email || '',
+        industry: company.industry || '',
+      });
+    }
+  }, [user, company]);
 
   // Track addUserType changes
   useEffect(() => {
@@ -265,6 +297,33 @@ export default function AdminDashboard() {
       } else {
         setLeads(leadsData || []);
         console.log('Fetched leads:', leadsData);
+      }
+
+      // Fetch all calls for this company
+      const { data: callsData, error: callsError } = await supabase
+        .from('call_outcomes')
+        .select('*, leads(name, email, contact), employees(full_name, email)')
+        .eq('company_id', userRole.company_id)
+        .order('created_at', { ascending: false });
+
+      if (callsError) {
+        console.error('Error fetching calls:', callsError);
+      } else {
+        setCalls(callsData || []);
+        console.log('Fetched calls:', callsData);
+      }
+
+      // Fetch all analyses for this company
+      const { data: analysesData, error: analysesError } = await supabase
+        .from('analyses')
+        .select('*')
+        .in('call_id', callsData?.map(call => call.id) || []);
+
+      if (analysesError) {
+        console.error('Error fetching analyses:', analysesError);
+      } else {
+        setAnalyses(analysesData || []);
+        console.log('Fetched analyses:', analysesData);
       }
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -675,6 +734,76 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    try {
+      setIsUpdating(true);
+
+      // Update user metadata in Supabase Auth
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          full_name: profileData.full_name,
+        }
+      });
+
+      if (authError) throw authError;
+
+      toast({
+        title: 'Success',
+        description: 'Profile updated successfully!',
+      });
+
+      setIsEditingProfile(false);
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update profile. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveCompany = async () => {
+    if (!userRole?.company_id) return;
+
+    try {
+      setIsUpdating(true);
+
+      const { error } = await supabase
+        .from('companies')
+        .update({
+          name: companyData.name,
+          email: companyData.email,
+          industry: companyData.industry,
+        })
+        .eq('id', userRole.company_id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Company information updated successfully!',
+      });
+
+      setIsEditingCompany(false);
+      // Refresh company data
+      window.location.reload(); // Simple refresh to get updated company data
+    } catch (error: any) {
+      console.error('Error updating company:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update company information. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -757,20 +886,28 @@ export default function AdminDashboard() {
               Leads
             </Button>
             <Button 
-              variant={activeSidebarItem === 'analytics' ? 'accent' : 'ghost'} 
+              variant={activeSidebarItem === 'call-history' ? 'accent' : 'ghost'} 
               className="w-full justify-start"
-              onClick={() => setActiveSidebarItem('analytics')}
+              onClick={() => setActiveSidebarItem('call-history')}
             >
-              <TrendingUp className="h-4 w-4" />
-              Analytics
+              <History className="h-4 w-4" />
+              Call History
             </Button>
             <Button 
-              variant={activeSidebarItem === 'settings' ? 'accent' : 'ghost'} 
+              variant={activeSidebarItem === 'performance' ? 'accent' : 'ghost'} 
               className="w-full justify-start"
-              onClick={() => setActiveSidebarItem('settings')}
+              onClick={() => setActiveSidebarItem('performance')}
             >
-              <Settings className="h-4 w-4" />
-              Settings
+              <BarChart3 className="h-4 w-4" />
+              Performance
+            </Button>
+            <Button 
+              variant={activeSidebarItem === 'profile' ? 'accent' : 'ghost'} 
+              className="w-full justify-start"
+              onClick={() => setActiveSidebarItem('profile')}
+            >
+              <User className="h-4 w-4" />
+              Profile
             </Button>
           </nav>
         </aside>
@@ -779,47 +916,198 @@ export default function AdminDashboard() {
         <main className="flex-1 p-6">
           {activeSidebarItem === 'overview' && (
             <>
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{managers.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active managers
-                </p>
-              </CardContent>
-            </Card>
+              {/* Company Overview Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{managers.length}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Active managers
+                    </p>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-                <UserPlus className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{employees.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active employees
-                </p>
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
+                    <UserPlus className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{employees.length}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Active employees
+                    </p>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                <Building className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{managers.length + employees.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  All company users
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{leads.length}</div>
+                    <p className="text-xs text-muted-foreground">
+                      All time leads
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
+                    <PhoneCall className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{calls.length}</div>
+                    <p className="text-xs text-muted-foreground">
+                      All time calls
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Team Call Quality Stats */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold mb-4">Team Call Quality Stats</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Avg Sentiment</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyses.length > 0 
+                          ? Math.round(analyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / analyses.length)
+                          : 0}%
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Average sentiment score
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Avg Engagement</CardTitle>
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyses.length > 0 
+                          ? Math.round(analyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / analyses.length)
+                          : 0}%
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Average engagement score
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
+                      <Shield className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyses.length > 0 
+                          ? `${Math.round(analyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / analyses.length)}/10`
+                          : '0/10'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Average confidence score
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Completed Analyses</CardTitle>
+                      <Check className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyses.filter(a => a.status?.toLowerCase() === 'completed').length}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Out of {analyses.length} total
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Lead Management Stats */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold mb-4">Lead Management Stats</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{leads.length}</div>
+                      <p className="text-xs text-muted-foreground">
+                        All leads in system
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Called Leads</CardTitle>
+                      <PhoneCall className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {[...new Set(calls.map(call => call.lead_id))].length}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Unique leads called
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Pending Calls</CardTitle>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {leads.length - [...new Set(calls.map(call => call.lead_id))].length}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Leads not yet called
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {leads.length > 0 
+                          ? Math.round((leads.filter(lead => lead.status === 'converted').length / leads.length) * 100)
+                          : 0}%
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Lead to customer rate
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
 
           {/* Search */}
           <div className="mb-6">
@@ -1290,7 +1578,110 @@ export default function AdminDashboard() {
                 </Card>
               </div>
 
-              {/* Lead Groups Section */}
+              {/* All Leads Section - Now on Top */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5" />
+                        All Leads ({leads.length})
+                      </CardTitle>
+                      <CardDescription>
+                        Complete list of all leads in your system
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search leads..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10 w-64"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {leads.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No leads found</p>
+                      <Button className="mt-4" onClick={() => setIsAddLeadModalOpen(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add First Lead
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {leads
+                        .filter(lead => 
+                          lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          lead.contact?.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map((lead) => (
+                        <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <Phone className="h-5 w-5 text-blue-500" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium">{lead.name}</h4>
+                              <p className="text-sm text-muted-foreground">{lead.email}</p>
+                              <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                              {lead.assigned_employee ? (
+                                <p className="text-xs text-green-600">Assigned to: {lead.assigned_employee.full_name}</p>
+                              ) : lead.created_by_manager ? (
+                                <p className="text-xs text-blue-600">Created by: {lead.created_by_manager.full_name}</p>
+                              ) : (
+                                <p className="text-xs text-orange-600">Unassigned</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant="secondary">{lead.status}</Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Lead
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-red-600">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Lead
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      ))}
+                      {leads.filter(lead => 
+                        lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        lead.contact?.toLowerCase().includes(searchTerm.toLowerCase())
+                      ).length === 0 && searchTerm && (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">No leads found matching your search.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Lead Groups Section - Now Below */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -1312,84 +1703,422 @@ export default function AdminDashboard() {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          )}
 
-              {/* Recent Leads Section */}
+          {activeSidebarItem === 'call-history' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Call History</h2>
+                <p className="text-muted-foreground">View all calls made by your team members.</p>
+              </div>
+              <CallHistoryManager 
+                companyId={userRole?.company_id || ''} 
+                managerId={null} // null means show all calls for the company
+              />
+            </div>
+          )}
+
+          {activeSidebarItem === 'performance' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Manager & Employee Performance</h2>
+                <p className="text-muted-foreground">Track performance metrics for all managers and their teams.</p>
+              </div>
+              
+              {/* Manager Performance Section */}
+              <div className="space-y-6">
+                <h3 className="text-xl font-semibold">Manager Performance</h3>
+                <div className="grid gap-6">
+                  {managers.map((manager) => {
+                    const managerEmployees = employees.filter(emp => emp.manager_id === manager.id);
+                    const managerEmployeeIds = managerEmployees.map(emp => emp.id);
+                    const managerCalls = calls.filter(call => managerEmployeeIds.includes(call.employee_id));
+                    const managerCallIds = managerCalls.map(call => call.id);
+                    const managerAnalyses = analyses.filter(analysis => managerCallIds.includes(analysis.call_id));
+                    const completedAnalyses = managerAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
+                    
+                    // Calculate manager's team stats
+                    const managerEmployeeUserIds = managerEmployees.map(emp => emp.user_id);
+                    const totalLeads = leads.filter(lead => managerEmployeeUserIds.includes(lead.assigned_to)).length;
+                    const calledLeads = [...new Set(managerCalls.map(call => call.lead_id))].length;
+                    const pendingLeads = totalLeads - calledLeads;
+                    const followUpCalls = managerCalls.filter(call => call.outcome === 'follow_up').length;
+                    const completedCalls = managerCalls.filter(call => 
+                      call.outcome === 'converted' || call.outcome === 'completed' || call.outcome === 'interested'
+                    ).length;
+                    
+                    return (
+                      <Card key={manager.id}>
+                        <CardHeader>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="flex items-center gap-2">
+                                <Users className="h-5 w-5" />
+                                {manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}
+                              </CardTitle>
+                              <CardDescription>
+                                {manager.profile?.department && `Department: ${manager.profile.department}`}
+                              </CardDescription>
+                            </div>
+                            <Badge variant="secondary">Manager</Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-blue-600">{totalLeads}</div>
+                              <div className="text-sm text-muted-foreground">Total Leads</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-green-600">{calledLeads}</div>
+                              <div className="text-sm text-muted-foreground">Called</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-orange-600">{pendingLeads}</div>
+                              <div className="text-sm text-muted-foreground">Pending</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-purple-600">{completedCalls}</div>
+                              <div className="text-sm text-muted-foreground">Completed</div>
+                            </div>
+                          </div>
+                          
+                          {/* Team Members */}
+                          <div className="mt-4">
+                            <h4 className="font-medium mb-2">Team Members ({managerEmployees.length})</h4>
+                            <div className="space-y-2">
+                              {managerEmployees.map((employee) => {
+                                const employeeCalls = calls.filter(call => call.employee_id === employee.id);
+                                const employeeCallIds = employeeCalls.map(call => call.id);
+                                const employeeAnalyses = analyses.filter(analysis => employeeCallIds.includes(analysis.call_id));
+                                const completedEmployeeAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
+                                
+                                const employeeLeads = leads.filter(lead => lead.assigned_to === employee.user_id);
+                                const calledEmployeeLeads = [...new Set(employeeCalls.map(call => call.lead_id))].length;
+                                const pendingEmployeeLeads = employeeLeads.length - calledEmployeeLeads;
+                                const followUpEmployeeCalls = employeeCalls.filter(call => call.outcome === 'follow_up').length;
+                                const completedEmployeeCalls = employeeCalls.filter(call => 
+                                  call.outcome === 'converted' || call.outcome === 'completed' || call.outcome === 'interested'
+                                ).length;
+                                
+                                return (
+                                  <div key={employee.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                        <UserPlus className="h-4 w-4 text-purple-500" />
+                                      </div>
+                                      <div>
+                                        <div className="font-medium">{employee.profile?.full_name || `Employee ${employee.user_id.slice(0, 8)}`}</div>
+                                        <div className="text-sm text-muted-foreground">{employee.profile?.email}</div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm">
+                                      <div className="text-center">
+                                        <div className="font-medium text-blue-600">{employeeLeads.length}</div>
+                                        <div className="text-xs text-muted-foreground">Leads</div>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="font-medium text-green-600">{calledEmployeeLeads}</div>
+                                        <div className="text-xs text-muted-foreground">Called</div>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="font-medium text-orange-600">{pendingEmployeeLeads}</div>
+                                        <div className="text-xs text-muted-foreground">Pending</div>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="font-medium text-purple-600">{completedEmployeeCalls}</div>
+                                        <div className="text-xs text-muted-foreground">Completed</div>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="font-medium text-yellow-600">{followUpEmployeeCalls}</div>
+                                        <div className="text-xs text-muted-foreground">Follow-ups</div>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="font-medium text-indigo-600">{completedEmployeeAnalyses.length}</div>
+                                        <div className="text-xs text-muted-foreground">Analyses</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSidebarItem === 'profile' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Admin Profile</h2>
+                <p className="text-muted-foreground">Manage your admin account settings and information.</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Personal Information */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <User className="h-5 w-5" />
+                          Personal Information
+                        </CardTitle>
+                        <CardDescription>
+                          Your basic account information
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditingProfile(!isEditingProfile)}
+                      >
+                        {isEditingProfile ? (
+                          <>
+                            <X className="h-4 w-4 mr-2" />
+                            Cancel
+                          </>
+                        ) : (
+                          <>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Full Name</Label>
+                      {isEditingProfile ? (
+                        <Input
+                          value={profileData.full_name}
+                          onChange={(e) => setProfileData(prev => ({ ...prev, full_name: e.target.value }))}
+                          placeholder="Enter full name"
+                        />
+                      ) : (
+                        <p className="text-lg font-medium">{user?.user_metadata?.full_name || 'Not provided'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Email</Label>
+                      <p className="text-lg">{user?.email || 'Not provided'}</p>
+                      <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Role</Label>
+                      <Badge variant="secondary" className="capitalize">Admin</Badge>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Company</Label>
+                      <p className="text-lg">{company?.name || 'Not provided'}</p>
+                    </div>
+                    {isEditingProfile && (
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsEditingProfile(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleSaveProfile}
+                          disabled={isUpdating}
+                        >
+                          {isUpdating ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              Save Changes
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Company Information */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Building className="h-5 w-5" />
+                          Company Information
+                        </CardTitle>
+                        <CardDescription>
+                          Your company details
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditingCompany(!isEditingCompany)}
+                      >
+                        {isEditingCompany ? (
+                          <>
+                            <X className="h-4 w-4 mr-2" />
+                            Cancel
+                          </>
+                        ) : (
+                          <>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Company Name</Label>
+                      {isEditingCompany ? (
+                        <Input
+                          value={companyData.name}
+                          onChange={(e) => setCompanyData(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="Enter company name"
+                        />
+                      ) : (
+                        <p className="text-lg font-medium">{company?.name || 'Not provided'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Company Email</Label>
+                      {isEditingCompany ? (
+                        <Input
+                          type="email"
+                          value={companyData.email}
+                          onChange={(e) => setCompanyData(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="Enter company email"
+                        />
+                      ) : (
+                        <p className="text-lg">{company?.email || 'Not provided'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Industry</Label>
+                      {isEditingCompany ? (
+                        <Input
+                          value={companyData.industry}
+                          onChange={(e) => setCompanyData(prev => ({ ...prev, industry: e.target.value }))}
+                          placeholder="Enter industry"
+                        />
+                      ) : (
+                        <p className="text-lg">{company?.industry || 'Not specified'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Created</Label>
+                      <p className="text-lg">{company?.created_at ? new Date(company.created_at).toLocaleDateString() : 'Not available'}</p>
+                    </div>
+                    {isEditingCompany && (
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsEditingCompany(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleSaveCompany}
+                          disabled={isUpdating}
+                        >
+                          {isUpdating ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              Save Changes
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Account Statistics */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Recent Leads
+                    <BarChart3 className="h-5 w-5" />
+                    Account Statistics
                   </CardTitle>
                   <CardDescription>
-                    Latest leads added to your system
+                    Overview of your admin account activity
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {leads.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No leads found</p>
-                      <Button className="mt-4">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add First Lead
-                      </Button>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">{managers.length}</div>
+                      <div className="text-sm text-muted-foreground">Managers Created</div>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {leads.slice(0, 5).map((lead) => (
-                        <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center space-x-4">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <Phone className="h-5 w-5 text-blue-500" />
-                            </div>
-                            <div>
-                              <h4 className="font-medium">{lead.name}</h4>
-                              <p className="text-sm text-muted-foreground">{lead.email}</p>
-                              <p className="text-sm text-muted-foreground">{lead.contact}</p>
-                              {lead.assigned_employee ? (
-                                <p className="text-xs text-green-600">Assigned to: {lead.assigned_employee.full_name}</p>
-                              ) : lead.created_by_manager ? (
-                                <p className="text-xs text-blue-600">Created by: {lead.created_by_manager.full_name}</p>
-                              ) : (
-                                <p className="text-xs text-orange-600">Unassigned</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="secondary">{lead.status}</Badge>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {leads.length > 5 && (
-                        <div className="text-center pt-4">
-                          <Button variant="outline">
-                            View All Leads ({leads.length})
-                          </Button>
-                        </div>
-                      )}
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{employees.length}</div>
+                      <div className="text-sm text-muted-foreground">Employees Created</div>
                     </div>
-                  )}
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">{leads.length}</div>
+                      <div className="text-sm text-muted-foreground">Leads Added</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-orange-600">{calls.length}</div>
+                      <div className="text-sm text-muted-foreground">Total Calls</div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-            </div>
-          )}
 
-          {activeSidebarItem === 'analytics' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Analytics</h2>
-              <p className="text-muted-foreground">View performance metrics and insights.</p>
-              {/* Analytics content will be added here */}
-            </div>
-          )}
-
-          {activeSidebarItem === 'settings' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Settings</h2>
-              <p className="text-muted-foreground">Configure your company settings.</p>
-              {/* Settings content will be added here */}
+              {/* Password Management */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Password Management
+                  </CardTitle>
+                  <CardDescription>
+                    Update your account password
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                        <p className="text-sm text-yellow-800">
+                          <strong>Note:</strong> Password changes are handled through the authentication system. 
+                          Please contact your system administrator for password updates.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" disabled>
+                        <Shield className="h-4 w-4 mr-2" />
+                        Change Password
+                      </Button>
+                      <p className="text-sm text-muted-foreground">
+                        Contact admin for password changes
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </main>
