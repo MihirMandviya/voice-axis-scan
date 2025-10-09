@@ -135,9 +135,14 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.new_password
-      });
+      // Update password in employees table
+      const { error } = await supabase
+        .from('employees')
+        .update({
+          password: passwordData.new_password,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
 
       if (error) {
         throw error;

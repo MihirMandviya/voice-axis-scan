@@ -723,8 +723,10 @@ export default function ManagerDashboard() {
                             const employeeCallIds = calls.map(c => c.id);
                             const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
                             const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
+                            
+                            
                             const avgSentiment = completedAnalyses.length > 0
-                              ? Math.round(completedAnalyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / completedAnalyses.length)
+                              ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseInt(a.sentiment_score) || 0), 0) / completedAnalyses.length)
                               : 0;
                             return avgSentiment;
                           })()}%
@@ -740,7 +742,7 @@ export default function ManagerDashboard() {
                             const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
                             const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
                             const avgEngagement = completedAnalyses.length > 0
-                              ? Math.round(completedAnalyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / completedAnalyses.length)
+                              ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseInt(a.engagement_score) || 0), 0) / completedAnalyses.length)
                               : 0;
                             return avgEngagement;
                           })()}%
@@ -756,7 +758,7 @@ export default function ManagerDashboard() {
                             const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
                             const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
                             const avgConfidence = completedAnalyses.length > 0
-                              ? Math.round((completedAnalyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / completedAnalyses.length) * 10)
+                              ? Math.round((completedAnalyses.reduce((sum, a) => sum + ((parseInt(a.confidence_score_executive) + parseInt(a.confidence_score_person)) / 2 || 0), 0) / completedAnalyses.length))
                               : 0;
                             return `${avgConfidence}/10`;
                           })()}

@@ -45,6 +45,7 @@ import {
   Save,
   X,
   RefreshCw,
+  Edit2,
   History,
   BarChart3,
   Clock
@@ -117,6 +118,11 @@ export default function AdminDashboard() {
     name: '',
     email: '',
     industry: '',
+  });
+  const [isPasswordEditing, setIsPasswordEditing] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    new_password: '',
+    confirm_password: '',
   });
   
   const [newUser, setNewUser] = useState({
@@ -797,6 +803,61 @@ export default function AdminDashboard() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to update company information. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (!user) return;
+
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      toast({
+        title: 'Error',
+        description: 'New passwords do not match.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (passwordData.new_password.length < 6) {
+      toast({
+        title: 'Error',
+        description: 'Password must be at least 6 characters long.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      
+      // Update password using Supabase Auth (since admin uses Supabase Auth)
+      const { error } = await supabase.auth.updateUser({
+        password: passwordData.new_password
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setPasswordData({
+        new_password: '',
+        confirm_password: '',
+      });
+      setIsPasswordEditing(false);
+      
+      toast({
+        title: 'Password updated',
+        description: 'Your password has been successfully updated.',
+      });
+    } catch (error: any) {
+      console.error('Error updating password:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update password. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -2087,37 +2148,77 @@ export default function AdminDashboard() {
 
               {/* Password Management */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" />
-                    Password Management
-                  </CardTitle>
-                  <CardDescription>
-                    Update your account password
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                        <p className="text-sm text-yellow-800">
-                          <strong>Note:</strong> Password changes are handled through the authentication system. 
-                          Please contact your system administrator for password updates.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" disabled>
-                        <Shield className="h-4 w-4 mr-2" />
-                        Change Password
-                      </Button>
-                      <p className="text-sm text-muted-foreground">
-                        Contact admin for password changes
-                      </p>
-                    </div>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Shield className="h-5 w-5" />
+                      Password Management
+                    </CardTitle>
+                    <CardDescription>
+                      Update your account password
+                    </CardDescription>
                   </div>
-                </CardContent>
+                  {!isPasswordEditing ? (
+                    <Button onClick={() => setIsPasswordEditing(true)} size="sm" variant="outline">
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Change Password
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button onClick={handlePasswordChange} size="sm" disabled={isUpdating}>
+                        {isUpdating ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Update
+                          </>
+                        )}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setIsPasswordEditing(false);
+                          setPasswordData({
+                            new_password: '',
+                            confirm_password: '',
+                          });
+                        }} 
+                        size="sm"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </CardHeader>
+                {isPasswordEditing && (
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label htmlFor="new_password">New Password</Label>
+                      <Input
+                        id="new_password"
+                        type="password"
+                        value={passwordData.new_password}
+                        onChange={(e) => setPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
+                        placeholder="Enter new password"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="confirm_password">Confirm New Password</Label>
+                      <Input
+                        id="confirm_password"
+                        type="password"
+                        value={passwordData.confirm_password}
+                        onChange={(e) => setPasswordData(prev => ({ ...prev, confirm_password: e.target.value }))}
+                        placeholder="Confirm new password"
+                      />
+                    </div>
+                  </CardContent>
+                )}
               </Card>
             </div>
           )}

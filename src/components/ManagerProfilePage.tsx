@@ -135,7 +135,7 @@ export default function ManagerProfilePage({ onBack }: ManagerProfilePageProps) 
   };
 
   const handlePasswordChange = async () => {
-    if (!user) return;
+    if (!user || !userRole) return;
 
     if (passwordData.new_password !== passwordData.confirm_password) {
       toast({
@@ -156,9 +156,14 @@ export default function ManagerProfilePage({ onBack }: ManagerProfilePageProps) 
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.new_password
-      });
+      // Update password in managers table
+      const { error } = await supabase
+        .from('managers')
+        .update({
+          password: passwordData.new_password,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
 
       if (error) {
         throw error;
