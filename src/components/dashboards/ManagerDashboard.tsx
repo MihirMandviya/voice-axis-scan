@@ -229,6 +229,7 @@ export default function ManagerDashboard() {
       
       if (employees.length > 0) {
         const employeeIds = employees.map(emp => emp.id);
+        console.log('Manager Dashboard - Fetching calls for employee IDs:', employeeIds);
         const { data, error } = await supabase
           .from('call_outcomes')
           .select('*, leads(name, email, contact), employees(full_name, email)')
@@ -237,6 +238,7 @@ export default function ManagerDashboard() {
           .order('created_at', { ascending: false });
         callsData = data;
         callsError = error;
+        console.log('Manager Dashboard - Calls fetch result:', { data: callsData, error: callsError });
       } else {
         console.log('No employees found, skipping call outcomes fetch');
       }
@@ -254,12 +256,16 @@ export default function ManagerDashboard() {
       
       if (callsData && callsData.length > 0) {
         const callIds = callsData.map(call => call.id);
+        console.log('Manager Dashboard - Fetching analyses for call IDs:', callIds);
         const { data, error } = await supabase
           .from('analyses')
           .select('*')
           .in('call_id', callIds);
         analysesData = data;
         analysesError = error;
+        console.log('Manager Dashboard - Analyses fetch result:', { data: analysesData, error: analysesError });
+      } else {
+        console.log('Manager Dashboard - No calls found, skipping analyses fetch');
       }
 
       if (analysesError) {
@@ -719,11 +725,23 @@ export default function ManagerDashboard() {
                       <div className="text-center p-4 bg-blue-50 rounded-lg">
                         <div className="text-2xl font-bold text-blue-600">
                           {(() => {
+                            // Only calculate if we have data
+                            if (!calls || calls.length === 0 || !analyses || analyses.length === 0) {
+                              return 0;
+                            }
+                            
                             // Filter analyses for calls made by employees under this manager
                             const employeeCallIds = calls.map(c => c.id);
                             const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
                             const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
                             
+                            console.log('Manager Dashboard - Team Call Quality Stats Debug:');
+                            console.log('Total calls:', calls.length);
+                            console.log('Total analyses:', analyses.length);
+                            console.log('Employee call IDs:', employeeCallIds);
+                            console.log('Employee analyses:', employeeAnalyses.length);
+                            console.log('Completed analyses:', completedAnalyses.length);
+                            console.log('Completed analyses data:', completedAnalyses);
                             
                             const avgSentiment = completedAnalyses.length > 0
                               ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseInt(a.sentiment_score) || 0), 0) / completedAnalyses.length)
@@ -737,6 +755,11 @@ export default function ManagerDashboard() {
                       <div className="text-center p-4 bg-green-50 rounded-lg">
                         <div className="text-2xl font-bold text-green-600">
                           {(() => {
+                            // Only calculate if we have data
+                            if (!calls || calls.length === 0 || !analyses || analyses.length === 0) {
+                              return 0;
+                            }
+                            
                             // Filter analyses for calls made by employees under this manager
                             const employeeCallIds = calls.map(c => c.id);
                             const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));

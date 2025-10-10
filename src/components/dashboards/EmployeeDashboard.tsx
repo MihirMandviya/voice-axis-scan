@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -177,10 +178,32 @@ export default function EmployeeDashboard() {
     company: "",
     description: "",
   });
+  
+  // Exotel calling state
+  const [isExotelCallModalOpen, setIsExotelCallModalOpen] = useState(false);
+  const [fromNumber, setFromNumber] = useState(""); // Will be set from company settings
+  const [toNumber, setToNumber] = useState("");
+  const [callerId, setCallerId] = useState(""); // Will be set from company settings
+  const [isCallInProgress, setIsCallInProgress] = useState(false);
+  const [currentCallSid, setCurrentCallSid] = useState("");
+  const [callStatus, setCallStatus] = useState("");
+  const [callPollingInterval, setCallPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Company settings state
+  const [companySettings, setCompanySettings] = useState({
+    caller_id: "09513886363",
+    from_numbers: ["7887766008"],
+  });
+  
+  // Remove lead modal state
+  const [isRemoveLeadModalOpen, setIsRemoveLeadModalOpen] = useState(false);
+  const [selectedLeadToRemove, setSelectedLeadToRemove] = useState<Lead | null>(null);
+  const [removalReason, setRemovalReason] = useState("");
 
   useEffect(() => {
     if (userRole && company) {
       fetchData();
+      fetchCompanySettings();
       
       // Set up automatic refresh every 10 seconds to check for analysis updates
       const dataInterval = setInterval(() => {
@@ -204,7 +227,7 @@ export default function EmployeeDashboard() {
 
     try {
       if (showLoading) {
-        setLoading(true);
+      setLoading(true);
       }
 
       // Fetch leads assigned to this employee
@@ -221,12 +244,13 @@ export default function EmployeeDashboard() {
       } else {
         const leadsDataArray = leadsData || [];
         console.log('EmployeeDashboard - Fetched leads:', leadsDataArray.length, leadsDataArray);
-        // Categorize leads into 3 sections
-        const allLeadsArray = leadsDataArray; // Show ALL leads in All Leads section
-        const followUpLeadsArray = leadsDataArray.filter(lead => 
+        // Categorize leads into 3 sections (exclude removed leads)
+        const activeLeadsArray = leadsDataArray.filter(lead => lead.status !== 'removed');
+        const allLeadsArray = activeLeadsArray; // Show ALL active leads in All Leads section
+        const followUpLeadsArray = activeLeadsArray.filter(lead => 
           lead.status === 'contacted' || lead.status === 'follow_up'
         );
-        const completedLeadsArray = leadsDataArray.filter(lead => 
+        const completedLeadsArray = activeLeadsArray.filter(lead => 
           lead.status === 'converted' || lead.status === 'completed'
         );
         
@@ -252,9 +276,9 @@ export default function EmployeeDashboard() {
         console.error('Employee not found:', employeeError);
         setCalls([]);
       } else {
-        // Fetch calls made by this employee
+        // Fetch calls made by this employee from call_history table
         const { data: callsData, error: callsError } = await supabase
-          .from('call_outcomes')
+          .from('call_history')
           .select(`
             *,
             leads (
@@ -308,7 +332,7 @@ export default function EmployeeDashboard() {
       });
     } finally {
       if (showLoading) {
-        setLoading(false);
+      setLoading(false);
       }
     }
   };
@@ -316,6 +340,12 @@ export default function EmployeeDashboard() {
   const handleStartCall = (lead: Lead) => {
     setSelectedLead(lead);
     setIsCallModalOpen(true);
+  };
+
+  const handleStartExotelCall = (lead: Lead) => {
+    setSelectedLead(lead);
+    setToNumber(lead.contact); // Pre-fill the lead's contact number
+    setIsExotelCallModalOpen(true);
   };
 
   const handleMarkAsComplete = (leadId: string) => {
@@ -361,6 +391,189 @@ export default function EmployeeDashboard() {
           variant: 'destructive',
         });
       }
+    }
+  };
+
+  const handleDeleteFollowUp = async (leadId: string) => {
+    if (window.confirm('Are you sure you want to delete this follow-up? This will remove the follow-up call record and the lead will return to the "All Leads" section.')) {
+      try {
+        // Find the follow-up call record for this lead
+        // Look for calls that have next_follow_up set (indicating it's a follow-up call)
+        const followUpCall = calls.find(call => 
+          call.lead_id === leadId && 
+          call.next_follow_up
+        );
+
+        if (!followUpCall) {
+          // If no call record found, just update the lead status to 'active'
+          console.log('No follow-up call record found, updating lead status only');
+          
+          const { error: leadError } = await supabase
+            .from('leads')
+            .update({ status: 'active' })
+            .eq('id', leadId);
+
+          if (leadError) throw leadError;
+
+          toast({
+            title: 'Follow-up Deleted',
+            description: 'Follow-up has been removed successfully. The lead will return to "All Leads".',
+          });
+
+          // Refresh data
+          fetchData(true);
+          return;
+        }
+
+        // Delete the follow-up call record from call_history table
+        const { error: historyError } = await supabase
+          .from('call_history')
+          .delete()
+          .eq('id', followUpCall.id);
+
+        if (historyError) throw historyError;
+
+        // Also delete from call_outcomes table for backward compatibility
+        const { error: outcomeError } = await supabase
+          .from('call_outcomes')
+          .delete()
+          .eq('id', followUpCall.id);
+
+        if (outcomeError) {
+          console.warn('Warning: Failed to delete from call_outcomes table:', outcomeError);
+          // Don't throw error here as call_history is the primary storage
+        }
+
+        // Update the lead status to 'active' so it returns to All Leads
+        const { error: leadError } = await supabase
+          .from('leads')
+          .update({ status: 'active' })
+          .eq('id', leadId);
+
+        if (leadError) throw leadError;
+
+        toast({
+          title: 'Follow-up Deleted',
+          description: 'Follow-up call has been removed successfully. The lead will return to "All Leads".',
+        });
+
+        // Refresh data
+        fetchData(true);
+      } catch (error: any) {
+        console.error('Error deleting follow-up:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to delete follow-up. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleRemoveLead = (lead: Lead) => {
+    setSelectedLeadToRemove(lead);
+    setRemovalReason("");
+    setIsRemoveLeadModalOpen(true);
+  };
+
+  const handleConfirmRemoveLead = async () => {
+    if (!selectedLeadToRemove || !removalReason.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please provide a reason for removing this lead.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // First get the employee record to get the correct employee ID
+      const { data: employeeData, error: employeeError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('user_id', userRole?.user_id)
+        .single();
+
+      if (employeeError || !employeeData) {
+        console.error('Employee not found:', employeeError);
+        return;
+      }
+
+      // Save to removed_leads table
+      const { error: removeError } = await supabase
+        .from('removed_leads')
+        .insert({
+          lead_id: selectedLeadToRemove.id,
+          employee_id: employeeData.id,
+          company_id: userRole?.company_id,
+          lead_name: selectedLeadToRemove.name,
+          lead_email: selectedLeadToRemove.email,
+          lead_contact: selectedLeadToRemove.contact,
+          lead_company: selectedLeadToRemove.company,
+          removal_reason: removalReason.trim(),
+        });
+
+      if (removeError) throw removeError;
+
+      // Update the lead status to 'removed'
+      const { error: leadError } = await supabase
+        .from('leads')
+        .update({ status: 'removed' })
+        .eq('id', selectedLeadToRemove.id);
+
+      if (leadError) throw leadError;
+
+      toast({
+        title: 'Lead Removed',
+        description: 'Lead has been removed successfully with the provided reason.',
+      });
+
+      // Close modal and refresh data
+      setIsRemoveLeadModalOpen(false);
+      setSelectedLeadToRemove(null);
+      setRemovalReason("");
+      fetchData(true);
+    } catch (error: any) {
+      console.error('Error removing lead:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to remove lead. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const fetchCompanySettings = async () => {
+    if (!userRole?.company_id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('company_settings')
+        .select('*')
+        .eq('company_id', userRole.company_id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
+        console.error('Error fetching company settings:', error);
+        return;
+      }
+
+      if (data) {
+        setCompanySettings({
+          caller_id: data.caller_id || "09513886363",
+          from_numbers: data.from_numbers || ["7887766008"],
+        });
+        
+        // Set default values for the call modal
+        if (data.from_numbers && data.from_numbers.length > 0) {
+          setFromNumber(data.from_numbers[0]);
+        }
+        if (data.caller_id) {
+          setCallerId(data.caller_id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching company settings:', error);
     }
   };
 
@@ -557,6 +770,262 @@ export default function EmployeeDashboard() {
     }
   };
 
+  // Exotel API functions via Supabase Edge Function
+  const initiateExotelCall = async (from: string, to: string, callerId: string) => {
+    try {
+      const response = await fetch('https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
+        },
+        body: JSON.stringify({
+          from: from,
+          to: to,
+          callerId: callerId,
+          company_id: userRole?.company_id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error initiating Exotel call:', error);
+      throw error;
+    }
+  };
+
+  const getExotelCallDetails = async (callSid: string) => {
+    try {
+      const response = await fetch(`https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/${callSid}?company_id=${userRole?.company_id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error getting Exotel call details:', error);
+      throw error;
+    }
+  };
+
+  const startCallPolling = (callSid: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const callDetails = await getExotelCallDetails(callSid);
+        console.log('📞 Call Details Response:', callDetails);
+        
+        const status = callDetails.Call.Status;
+        setCallStatus(status);
+
+        console.log(`📞 Call Status: ${status} for SID: ${callSid}`);
+
+        if (status === 'completed') {
+          // Call completed, stop polling and save recording URL
+          clearInterval(interval);
+          setCallPollingInterval(null);
+          setIsCallInProgress(false);
+          
+          console.log('📞 Call completed! Full response:', callDetails);
+          console.log('📞 Recording URL:', callDetails.Call.RecordingUrl);
+          console.log('📞 Call Duration:', callDetails.Call.Duration);
+          console.log('📞 Call End Time:', callDetails.Call.EndTime);
+          
+          // Save call details to database
+          await saveCallToDatabase(callDetails.Call);
+          
+          // Close Exotel modal and open call outcome form
+          setIsExotelCallModalOpen(false);
+          setIsCallModalOpen(true);
+          
+          toast({
+            title: 'Call Completed',
+            description: 'Call has been completed successfully! Please fill in the call outcome.',
+          });
+        } else if (status === 'failed' || status === 'busy' || status === 'no-answer') {
+          // Call failed, stop polling
+          clearInterval(interval);
+          setCallPollingInterval(null);
+          setIsCallInProgress(false);
+          
+          console.log(`📞 Call failed with status: ${status}`);
+          
+          toast({
+            title: 'Call Failed',
+            description: `Call failed with status: ${status}`,
+            variant: 'destructive',
+          });
+        }
+      } catch (error) {
+        console.error('Error polling call status:', error);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    setCallPollingInterval(interval);
+  };
+
+  const saveCallToDatabase = async (callData: any) => {
+    if (!selectedLead || !userRole?.company_id) return;
+
+    try {
+      console.log('📞 Saving call to database with data:', callData);
+      
+      // First get the employee record to get the correct employee ID
+      const { data: employeeData, error: employeeError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('user_id', userRole.user_id)
+        .single();
+
+      if (employeeError || !employeeData) {
+        console.error('Employee not found:', employeeError);
+        return;
+      }
+
+      // Save to the new call_history table with complete Exotel response
+      const callHistoryData = {
+        lead_id: selectedLead.id,
+        employee_id: employeeData.id,
+        company_id: userRole.company_id,
+        outcome: 'follow_up', // Default outcome, can be updated later
+        notes: 'Call completed via Exotel',
+        exotel_response: callData, // Store complete Exotel response as JSONB
+        exotel_call_sid: callData.Sid,
+        exotel_from_number: callData.From,
+        exotel_to_number: callData.To,
+        exotel_caller_id: callData.PhoneNumberSid,
+        exotel_status: callData.Status,
+        exotel_duration: callData.Duration,
+        exotel_recording_url: callData.RecordingUrl,
+        exotel_start_time: callData.StartTime,
+        exotel_end_time: callData.EndTime,
+        exotel_answered_by: callData.AnsweredBy,
+        exotel_direction: callData.Direction,
+      };
+
+      console.log('📞 Call history data to insert:', callHistoryData);
+
+      // Insert into call_history table
+      const { error: historyError } = await supabase
+        .from('call_history')
+        .insert(callHistoryData);
+
+      if (historyError) throw historyError;
+
+      // Also save to call_outcomes table for backward compatibility
+      const callOutcomeData = {
+        lead_id: selectedLead.id,
+        employee_id: employeeData.id,
+        company_id: userRole.company_id,
+        outcome: 'follow_up', // Default outcome, can be updated later
+        notes: 'Call completed via Exotel',
+        exotel_call_sid: callData.Sid,
+        exotel_from_number: callData.From,
+        exotel_to_number: callData.To,
+        exotel_caller_id: callData.PhoneNumberSid,
+        exotel_status: callData.Status,
+        exotel_duration: callData.Duration,
+        exotel_recording_url: callData.RecordingUrl,
+        exotel_start_time: callData.StartTime,
+        exotel_end_time: callData.EndTime,
+        call_in_progress: false,
+      };
+
+      const { error: outcomeError } = await supabase
+        .from('call_outcomes')
+        .insert(callOutcomeData);
+
+      if (outcomeError) {
+        console.warn('Warning: Failed to save to call_outcomes table:', outcomeError);
+        // Don't throw error here as call_history is the primary storage
+      }
+
+      console.log('📞 Call successfully saved to database!');
+
+      // Refresh data to show the new call
+      fetchData();
+    } catch (error: any) {
+      console.error('Error saving call to database:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save call details. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleExotelCall = async () => {
+    if (!fromNumber.trim() || !toNumber.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please provide both from and to numbers.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsCallInProgress(true);
+      setCallStatus('initiating');
+
+      console.log('📞 Initiating call with:', { from: fromNumber, to: toNumber, callerId });
+
+      // Initiate the call
+      const callResponse = await initiateExotelCall(fromNumber, toNumber, callerId);
+      console.log('📞 Call Initiation Response:', callResponse);
+      
+      const callSid = callResponse.Call.Sid;
+      console.log('📞 Call SID:', callSid);
+      
+      setCurrentCallSid(callSid);
+      setCallStatus('in-progress');
+
+      // Start polling for call status
+      startCallPolling(callSid);
+
+      toast({
+        title: 'Call Initiated',
+        description: 'Call has been initiated successfully!',
+      });
+
+    } catch (error: any) {
+      console.error('Error initiating call:', error);
+      setIsCallInProgress(false);
+      setCallStatus('');
+      
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to initiate call. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleCancelCall = () => {
+    if (callPollingInterval) {
+      clearInterval(callPollingInterval);
+      setCallPollingInterval(null);
+    }
+    setIsCallInProgress(false);
+    setCallStatus('');
+    setCurrentCallSid('');
+    setIsExotelCallModalOpen(false);
+  };
+
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -651,9 +1120,17 @@ export default function EmployeeDashboard() {
       return { status: 'not_called', label: 'Not Called', variant: 'secondary' as const, color: 'text-gray-500' };
     }
     
+    // Check if this is a follow-up call that still has next_follow_up set
+    if (latestCallRecord.outcome === 'follow_up' && latestCallRecord.next_follow_up) {
+      return { status: 'follow_up', label: 'Follow-up Added', variant: 'default' as const, color: 'text-orange-500' };
+    }
+    
+    // If follow-up was deleted (no next_follow_up), show as called
+    if (latestCallRecord.outcome === 'follow_up' && !latestCallRecord.next_follow_up) {
+      return { status: 'called', label: 'Called', variant: 'default' as const, color: 'text-blue-500' };
+    }
+    
     switch (latestCallRecord.outcome) {
-      case 'follow_up':
-        return { status: 'follow_up', label: 'Follow-up Added', variant: 'default' as const, color: 'text-orange-500' };
       case 'completed':
         return { status: 'completed', label: 'Called', variant: 'default' as const, color: 'text-green-500' };
       case 'not_interested':
@@ -805,15 +1282,15 @@ export default function EmployeeDashboard() {
           <Tabs value={selectedTab} onValueChange={setSelectedTab}>
             <TabsContent value="overview" className="space-y-6">
               {/* Call Quality Stats Section */}
-              <Card>
+                <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5" />
                     Call Quality Stats
                   </CardTitle>
                   <CardDescription>Analysis metrics and call performance indicators</CardDescription>
-                </CardHeader>
-                <CardContent>
+                  </CardHeader>
+                  <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="text-center p-4 bg-blue-50 rounded-lg">
                       <div className="text-2xl font-bold text-blue-600">
@@ -859,7 +1336,7 @@ export default function EmployeeDashboard() {
                             : 0;
                           return avgEngagement;
                         })()}%
-                      </div>
+                    </div>
                       <p className="text-sm text-purple-600 font-medium">Avg Engagement Score</p>
                     </div>
                     
@@ -875,19 +1352,19 @@ export default function EmployeeDashboard() {
                       <p className="text-sm text-orange-600 font-medium">Completed Analyses</p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
               {/* Leads Stats Section */}
-              <Card>
+                <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Phone className="h-5 w-5" />
                     Leads Stats
                   </CardTitle>
                   <CardDescription>Lead management and call activity metrics</CardDescription>
-                </CardHeader>
-                <CardContent>
+                  </CardHeader>
+                  <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="text-center p-4 bg-gray-50 rounded-lg">
                       <div className="text-2xl font-bold text-gray-700">
@@ -949,8 +1426,8 @@ export default function EmployeeDashboard() {
                       <p className="text-sm text-red-600 font-medium">Not Interested</p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
               {/* Recent Activity */}
               <Card>
@@ -985,12 +1462,12 @@ export default function EmployeeDashboard() {
                                     </div>
                                   ) : analysis.status?.toLowerCase() === 'completed' ? (
                                     <>
-                                      <Badge variant="outline" className="text-xs">
-                                        Sentiment: {analysis.sentiment_score}%
-                                      </Badge>
-                                      <Badge variant="outline" className="text-xs">
-                                        Engagement: {analysis.engagement_score}%
-                                      </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    Sentiment: {analysis.sentiment_score}%
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    Engagement: {analysis.engagement_score}%
+                                  </Badge>
                                     </>
                                   ) : (
                                     <Badge variant="destructive" className="text-xs">
@@ -1046,9 +1523,9 @@ export default function EmployeeDashboard() {
                     <RefreshCw className="h-4 w-4" />
                     Refresh
                   </Button>
-                  <Button onClick={() => setIsAddLeadModalOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Lead
+                <Button onClick={() => setIsAddLeadModalOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Lead
                   </Button>
                 </div>
               </div>
@@ -1122,13 +1599,13 @@ export default function EmployeeDashboard() {
                         {selectedLeadsSection === 'completed' && 'No completed leads yet'}
                       </p>
                       {selectedLeadsSection === 'all' && (
-                        <Button 
-                          className="mt-4" 
-                          onClick={() => setIsAddLeadModalOpen(true)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add First Lead
-                        </Button>
+                      <Button 
+                        className="mt-4" 
+                        onClick={() => setIsAddLeadModalOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add First Lead
+                      </Button>
                       )}
                     </div>
                   ) : (
@@ -1143,8 +1620,8 @@ export default function EmployeeDashboard() {
                         const statusIndicator = getLeadStatusIndicator(lead);
                         
                         return (
-                          <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center space-x-4">
+                        <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="flex items-center space-x-4">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                                 selectedLeadsSection === 'all' ? 'bg-blue-100' :
                                 selectedLeadsSection === 'followup' ? 'bg-orange-100' :
@@ -1153,14 +1630,14 @@ export default function EmployeeDashboard() {
                                 {selectedLeadsSection === 'all' && <Phone className="h-5 w-5 text-blue-500" />}
                                 {selectedLeadsSection === 'followup' && <Calendar className="h-5 w-5 text-orange-500" />}
                                 {selectedLeadsSection === 'completed' && <Check className="h-5 w-5 text-green-500" />}
-                              </div>
-                              <div>
-                                <h4 className="font-medium">{lead.name}</h4>
-                                <p className="text-sm text-muted-foreground">{lead.email}</p>
-                                <p className="text-sm text-muted-foreground">{lead.contact}</p>
-                                {lead.company && (
-                                  <p className="text-xs text-muted-foreground">{lead.company}</p>
-                                )}
+                            </div>
+                            <div>
+                              <h4 className="font-medium">{lead.name}</h4>
+                              <p className="text-sm text-muted-foreground">{lead.email}</p>
+                              <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                              {lead.company && (
+                                <p className="text-xs text-muted-foreground">{lead.company}</p>
+                              )}
                                 {selectedLeadsSection === 'all' && (
                                   <div className="flex items-center gap-2 mt-1">
                                     <Badge variant={statusIndicator.variant} className="text-xs">
@@ -1220,25 +1697,49 @@ export default function EmployeeDashboard() {
                                     })()}
                                   </div>
                                 )}
-                              </div>
                             </div>
-                            <div className="flex items-center space-x-2">
+                          </div>
+                          <div className="flex items-center space-x-2">
                               <Badge variant="secondary">
                                 {lead.status}
                               </Badge>
                               
                               {/* Show call button for all leads and follow-up leads */}
                               {(selectedLeadsSection === 'all' || selectedLeadsSection === 'followup') && (
-                                <Button 
-                                  onClick={() => handleStartCall(lead)}
-                                  className="gap-2"
-                                >
+                            <Button 
+                                  onClick={() => handleStartExotelCall(lead)}
+                              className="gap-2"
+                            >
                                   <Phone className="h-4 w-4" />
                                   {selectedLeadsSection === 'followup' ? 'Follow-up Call' : 'Call'}
+                            </Button>
+                              )}
+                              
+                              {/* Show remove button for all leads */}
+                              <Button 
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRemoveLead(lead)}
+                                className="gap-1 text-orange-600 hover:text-orange-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Remove
+                              </Button>
+                              
+                              {/* Show delete button for follow-up leads */}
+                              {selectedLeadsSection === 'followup' && (
+                                <Button 
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteFollowUp(lead.id)}
+                                  className="gap-1 text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete
                                 </Button>
                               )}
-                            </div>
                           </div>
+                        </div>
                         );
                       })}
                     </div>
@@ -1291,20 +1792,20 @@ export default function EmployeeDashboard() {
                                 <p className="text-xs text-muted-foreground">
                                   {new Date(call.created_at).toLocaleDateString()}
                                 </p>
-                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="flex items-center gap-2 mt-1">
                                   {hasAnalysis ? (
                                     analysis?.status?.toLowerCase() === 'pending' || analysis?.status?.toLowerCase() === 'processing' ? (
                                       <div className="flex items-center gap-2">
                                         <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                                        <Badge variant="outline" className="text-xs">
+                                    <Badge variant="outline" className="text-xs">
                                           {analysis?.status?.toLowerCase() === 'pending' ? 'Analysis Pending' : 'Processing...'}
-                                        </Badge>
+                                    </Badge>
                                       </div>
                                     ) : analysis?.status?.toLowerCase() === 'completed' ? (
                                       <>
-                                        <Badge variant="outline" className="text-xs">
+                                    <Badge variant="outline" className="text-xs">
                                           Sentiment: {analysis?.sentiment_score}%
-                                        </Badge>
+                                    </Badge>
                                         <Badge variant="outline" className="text-xs">
                                           Engagement: {analysis?.engagement_score}%
                                         </Badge>
@@ -1345,6 +1846,15 @@ export default function EmployeeDashboard() {
                                   Get Analysis
                                 </Button>
                               )}
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => window.open(`/call/${call.id}`, '_blank')}
+                                className="gap-1"
+                              >
+                                <Eye className="h-4 w-4" />
+                                Details
+                              </Button>
                               <Button 
                                 variant="outline" 
                                 size="sm"
@@ -1640,6 +2150,163 @@ export default function EmployeeDashboard() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exotel Call Modal */}
+      <Dialog open={isExotelCallModalOpen} onOpenChange={setIsExotelCallModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5 text-green-600" />
+              Make Call via Exotel
+            </DialogTitle>
+            <DialogDescription>
+              Initiate a call to {selectedLead?.name} using Exotel
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="fromNumber">From Number *</Label>
+              <Select value={fromNumber} onValueChange={setFromNumber}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a phone number" />
+                </SelectTrigger>
+                <SelectContent>
+                  {companySettings.from_numbers.map((number) => (
+                    <SelectItem key={number} value={number}>
+                      {number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="toNumber">To Number *</Label>
+              <Input
+                id="toNumber"
+                value={toNumber}
+                onChange={(e) => setToNumber(e.target.value)}
+                placeholder="Enter recipient phone number"
+                required
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="callerId">Caller ID</Label>
+              <Input
+                id="callerId"
+                value={callerId}
+                readOnly
+                className="bg-gray-50"
+                placeholder="Caller ID set by admin"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                This is set by your admin in Company Settings
+              </p>
+            </div>
+
+            {/* Call Status Display */}
+            {isCallInProgress && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-blue-700">
+                    Call Status: {callStatus}
+                  </span>
+                </div>
+                {currentCallSid && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Call ID: {currentCallSid}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 mt-6">
+            <Button 
+              variant="outline" 
+              onClick={handleCancelCall}
+              disabled={isCallInProgress}
+            >
+              {isCallInProgress ? 'Call in Progress...' : 'Cancel'}
+            </Button>
+            <Button 
+              onClick={handleExotelCall}
+              disabled={isCallInProgress || !fromNumber.trim() || !toNumber.trim()}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isCallInProgress ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Calling...
+                </>
+              ) : (
+                <>
+                  <Phone className="h-4 w-4 mr-2" />
+                  Make Call
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Lead Modal */}
+      <Dialog open={isRemoveLeadModalOpen} onOpenChange={setIsRemoveLeadModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              Remove Lead
+            </DialogTitle>
+            <DialogDescription>
+              Please provide a reason for removing this lead. This action will move the lead to the removed leads list.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedLeadToRemove && (
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <h4 className="font-medium">{selectedLeadToRemove.name}</h4>
+                <p className="text-sm text-gray-600">{selectedLeadToRemove.email}</p>
+                <p className="text-sm text-gray-600">{selectedLeadToRemove.contact}</p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="removal-reason">Reason for Removal *</Label>
+                <Textarea
+                  id="removal-reason"
+                  placeholder="Please provide a reason for removing this lead..."
+                  value={removalReason}
+                  onChange={(e) => setRemovalReason(e.target.value)}
+                  className="min-h-[100px]"
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsRemoveLeadModalOpen(false);
+                    setSelectedLeadToRemove(null);
+                    setRemovalReason("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmRemoveLead}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Remove Lead
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

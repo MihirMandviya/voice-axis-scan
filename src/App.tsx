@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import AnalysisDetail from "./pages/AnalysisDetail";
+import CallDetails from "./pages/CallDetails";
 import NotFound from "./pages/NotFound";
 import GroupPage from "./pages/GroupPage";
 import AuthCallback from "./pages/AuthCallback";
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/test-signup" element={<TestSignup />} />
             <Route path="/analysis/:id" element={<AnalysisDetail />} />
+            <Route path="/call/:callId" element={<CallDetails />} />
             <Route path="/group/:groupId" element={<GroupPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

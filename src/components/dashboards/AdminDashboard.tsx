@@ -48,7 +48,8 @@ import {
   Edit2,
   History,
   BarChart3,
-  Clock
+  Clock,
+  Upload
 } from "lucide-react";
 
 interface User {
@@ -85,6 +86,7 @@ export default function AdminDashboard() {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
+  const [leadGroups, setLeadGroups] = useState<any[]>([]);
   const [calls, setCalls] = useState<any[]>([]);
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -96,6 +98,12 @@ export default function AdminDashboard() {
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
   const [isDeleteUserModalOpen, setIsDeleteUserModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
+  const [isAddLeadGroupModalOpen, setIsAddLeadGroupModalOpen] = useState(false);
+  const [isUploadCSVModalOpen, setIsUploadCSVModalOpen] = useState(false);
+  const [isViewLeadModalOpen, setIsViewLeadModalOpen] = useState(false);
+  const [isEditLeadModalOpen, setIsEditLeadModalOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [leadsSection, setLeadsSection] = useState<'leads' | 'groups'>('leads');
   const [addUserType, setAddUserType] = useState<'manager' | 'employee'>('manager');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [generatedCredentials, setGeneratedCredentials] = useState<UserCredentials | null>(null);
@@ -140,6 +148,10 @@ export default function AdminDashboard() {
     contact: "",
     description: "",
     assignedTo: "",
+    groupId: "",
+  });
+  const [newLeadGroup, setNewLeadGroup] = useState({
+    groupName: "",
   });
 
   const [editUser, setEditUser] = useState({
@@ -162,9 +174,23 @@ export default function AdminDashboard() {
     phone: "",
   });
 
+  // Settings state
+  const [companySettings, setCompanySettings] = useState({
+    caller_id: "09513886363",
+    from_numbers: ["7887766008"],
+    exotel_api_key: "",
+    exotel_api_token: "",
+    exotel_subdomain: "api.exotel.com",
+    exotel_account_sid: "",
+  });
+  const [newFromNumber, setNewFromNumber] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiToken, setShowApiToken] = useState(false);
+
   useEffect(() => {
     if (userRole && company) {
       fetchUsers();
+      fetchCompanySettings();
     }
   }, [userRole, company]);
 
@@ -294,7 +320,7 @@ export default function AdminDashboard() {
         .select(`
           *,
           assigned_employee:employees!assigned_to(full_name, email),
-          created_by_manager:managers!user_id(full_name, email)
+          assigned_manager:managers!user_id(full_name, email)
         `)
         .eq('company_id', userRole.company_id);
 
@@ -303,6 +329,20 @@ export default function AdminDashboard() {
       } else {
         setLeads(leadsData || []);
         console.log('Fetched leads:', leadsData);
+      }
+
+      // Fetch all lead groups for this company
+      const { data: leadGroupsData, error: leadGroupsError } = await supabase
+        .from('lead_groups')
+        .select('*')
+        .eq('company_id', userRole.company_id)
+        .order('created_at', { ascending: false });
+
+      if (leadGroupsError) {
+        console.error('Error fetching lead groups:', leadGroupsError);
+      } else {
+        setLeadGroups(leadGroupsData || []);
+        console.log('Fetched lead groups:', leadGroupsData);
       }
 
       // Fetch all calls for this company
@@ -341,6 +381,86 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchCompanySettings = async () => {
+    if (!userRole?.company_id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('company_settings')
+        .select('*')
+        .eq('company_id', userRole.company_id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
+        console.error('Error fetching company settings:', error);
+        return;
+      }
+
+      if (data) {
+        setCompanySettings({
+          caller_id: data.caller_id || "09513886363",
+          from_numbers: data.from_numbers || ["7887766008"],
+          exotel_api_key: data.exotel_api_key || "",
+          exotel_api_token: data.exotel_api_token || "",
+          exotel_subdomain: data.exotel_subdomain || "api.exotel.com",
+          exotel_account_sid: data.exotel_account_sid || "",
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching company settings:', error);
+    }
+  };
+
+  const updateCompanySettings = async () => {
+    if (!userRole?.company_id) return;
+
+    try {
+      const { error } = await supabase
+        .from('company_settings')
+        .upsert({
+          company_id: userRole.company_id,
+          caller_id: companySettings.caller_id,
+          from_numbers: companySettings.from_numbers,
+          exotel_api_key: companySettings.exotel_api_key,
+          exotel_api_token: companySettings.exotel_api_token,
+          exotel_subdomain: companySettings.exotel_subdomain,
+          exotel_account_sid: companySettings.exotel_account_sid,
+        }, {
+          onConflict: 'company_id'
+        });
+
+      if (error) throw error;
+      toast({
+        title: 'Settings Updated',
+        description: 'Company settings have been updated successfully.',
+      });
+    } catch (error: any) {
+      console.error('Error updating company settings:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update settings. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const addFromNumber = () => {
+    if (newFromNumber.trim() && !companySettings.from_numbers.includes(newFromNumber.trim())) {
+      setCompanySettings(prev => ({
+        ...prev,
+        from_numbers: [...prev.from_numbers, newFromNumber.trim()]
+      }));
+      setNewFromNumber("");
+    }
+  };
+
+  const removeFromNumber = (index: number) => {
+    setCompanySettings(prev => ({
+      ...prev,
+      from_numbers: prev.from_numbers.filter((_, i) => i !== index)
+    }));
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -710,7 +830,8 @@ export default function AdminDashboard() {
           assigned_to: null, // Only employees should be in assigned_to
           user_id: newLead.assignedTo === "unassigned" ? null : newLead.assignedTo || null, // Admin assigns to manager
           company_id: userRole.company_id,
-          status: 'assigned',
+          status: newLead.assignedTo === "unassigned" ? 'unassigned' : 'assigned', // Set proper status based on assignment
+          group_id: newLead.groupId || null, // Add group assignment
         });
 
       if (error) throw error;
@@ -727,6 +848,7 @@ export default function AdminDashboard() {
         contact: "",
         description: "",
         assignedTo: "",
+        groupId: "",
       });
       setIsAddLeadModalOpen(false);
       fetchUsers(); // Refresh data
@@ -735,6 +857,45 @@ export default function AdminDashboard() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to add lead. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleViewLead = (lead: any) => {
+    setSelectedLead(lead);
+    setIsViewLeadModalOpen(true);
+  };
+
+  const handleEditLead = (lead: any) => {
+    setSelectedLead(lead);
+    setIsEditLeadModalOpen(true);
+  };
+
+  const handleDeleteLead = async (lead: any) => {
+    if (!confirm(`Are you sure you want to delete ${lead.name}?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', lead.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Lead deleted successfully!',
+      });
+
+      fetchUsers(); // Refresh data
+    } catch (error: any) {
+      console.error('Error deleting lead:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete lead. Please try again.',
         variant: 'destructive',
       });
     }
@@ -963,6 +1124,14 @@ export default function AdminDashboard() {
               Performance
             </Button>
             <Button 
+              variant={activeSidebarItem === 'settings' ? 'accent' : 'ghost'} 
+              className="w-full justify-start"
+              onClick={() => setActiveSidebarItem('settings')}
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </Button>
+            <Button 
               variant={activeSidebarItem === 'profile' ? 'accent' : 'ghost'} 
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('profile')}
@@ -979,40 +1148,40 @@ export default function AdminDashboard() {
             <>
               {/* Company Overview Stats */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{managers.length}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Active managers
-                    </p>
-                  </CardContent>
-                </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{managers.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  Active managers
+                </p>
+              </CardContent>
+            </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-                    <UserPlus className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{employees.length}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Active employees
-                    </p>
-                  </CardContent>
-                </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
+                <UserPlus className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{employees.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  Active employees
+                </p>
+              </CardContent>
+            </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
+              </CardHeader>
+              <CardContent>
                     <div className="text-2xl font-bold">{leads.length}</div>
-                    <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                       All time leads
                     </p>
                   </CardContent>
@@ -1027,10 +1196,10 @@ export default function AdminDashboard() {
                     <div className="text-2xl font-bold">{calls.length}</div>
                     <p className="text-xs text-muted-foreground">
                       All time calls
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
               {/* Team Call Quality Stats */}
               <div className="mb-8">
@@ -1576,12 +1745,30 @@ export default function AdminDashboard() {
                   <h2 className="text-2xl font-bold">Lead Management</h2>
                   <p className="text-muted-foreground">Track and manage your company's leads.</p>
                 </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsAddLeadGroupModalOpen(true)}>
+                    <Users className="h-4 w-4 mr-2" />
+                    Add Lead Group
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsUploadCSVModalOpen(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload CSV
+                  </Button>
                 <Button onClick={() => setIsAddLeadModalOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Lead
                 </Button>
+                </div>
               </div>
               
+              {/* Tabs for Leads and Lead Groups */}
+              <Tabs value={leadsSection} onValueChange={(value) => setLeadsSection(value as 'leads' | 'groups')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="leads">All Leads</TabsTrigger>
+                  <TabsTrigger value="groups">Lead Groups</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="leads" className="space-y-6">
               {/* Lead Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 <Card>
@@ -1644,13 +1831,13 @@ export default function AdminDashboard() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5" />
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
                         All Leads ({leads.length})
-                      </CardTitle>
-                      <CardDescription>
+                  </CardTitle>
+                  <CardDescription>
                         Complete list of all leads in your system
-                      </CardDescription>
+                  </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="relative">
@@ -1694,9 +1881,9 @@ export default function AdminDashboard() {
                               <p className="text-sm text-muted-foreground">{lead.email}</p>
                               <p className="text-sm text-muted-foreground">{lead.contact}</p>
                               {lead.assigned_employee ? (
-                                <p className="text-xs text-green-600">Assigned to: {lead.assigned_employee.full_name}</p>
-                              ) : lead.created_by_manager ? (
-                                <p className="text-xs text-blue-600">Created by: {lead.created_by_manager.full_name}</p>
+                                <p className="text-xs text-green-600">Assigned to Employee: {lead.assigned_employee.full_name}</p>
+                              ) : lead.assigned_manager ? (
+                                <p className="text-xs text-blue-600">Assigned to Manager: {lead.assigned_manager.full_name}</p>
                               ) : (
                                 <p className="text-xs text-orange-600">Unassigned</p>
                               )}
@@ -1706,20 +1893,20 @@ export default function AdminDashboard() {
                             <Badge variant="secondary">{lead.status}</Badge>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleViewLead(lead)}>
                                   <Eye className="h-4 w-4 mr-2" />
                                   View Details
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditLead(lead)}>
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit Lead
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600">
+                                <DropdownMenuItem onClick={() => handleDeleteLead(lead)} className="text-red-600">
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Delete Lead
                                 </DropdownMenuItem>
@@ -1741,29 +1928,61 @@ export default function AdminDashboard() {
                   )}
                 </CardContent>
               </Card>
+                </TabsContent>
 
-              {/* Lead Groups Section - Now Below */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Phone className="h-5 w-5" />
-                    Lead Groups
-                  </CardTitle>
-                  <CardDescription>
-                    Organize your leads into groups for better management
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No lead groups found</p>
-                    <Button className="mt-4">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Lead Group
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                <TabsContent value="groups" className="space-y-6">
+                  {/* Lead Groups Section */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Lead Groups
+                      </CardTitle>
+                      <CardDescription>
+                        Organize your leads into groups for better management
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {leadGroups.length === 0 ? (
+                        <div className="text-center py-8">
+                          <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-muted-foreground">No lead groups found</p>
+                          <Button className="mt-4" onClick={() => setIsAddLeadGroupModalOpen(true)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Lead Group
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {leadGroups.map((group) => (
+                            <div key={group.id} className="flex items-center justify-between p-4 border rounded-lg">
+                              <div>
+                                <h3 className="font-medium">{group.group_name}</h3>
+                                <p className="text-sm text-muted-foreground">
+                                  Created {new Date(group.created_at).toLocaleDateString()}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {leads.filter(lead => lead.group_id === group.id).length} leads
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="outline" size="sm">
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit
+                                </Button>
+                                <Button variant="outline" size="sm" className="text-red-600">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 
@@ -1911,6 +2130,215 @@ export default function AdminDashboard() {
                   })}
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeSidebarItem === 'settings' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Company Settings</h2>
+                <p className="text-muted-foreground">Manage Exotel calling settings for your company.</p>
+              </div>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Phone className="h-5 w-5" />
+                    Exotel Calling Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Configure the Caller ID and From Numbers that will be used for all calls made by employees.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Caller ID Setting */}
+                  <div className="space-y-2">
+                    <Label htmlFor="caller-id">Caller ID</Label>
+                    <Input
+                      id="caller-id"
+                      value={companySettings.caller_id}
+                      onChange={(e) => setCompanySettings(prev => ({ ...prev, caller_id: e.target.value }))}
+                      placeholder="Enter Caller ID (e.g., 09513886363)"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      This is the number that will appear as the caller ID for all outgoing calls.
+                    </p>
+                  </div>
+
+                  {/* From Numbers Management */}
+                  <div className="space-y-4">
+                    <div>
+                      <Label>From Numbers</Label>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Add phone numbers that employees can select as their "from" number when making calls.
+                      </p>
+                    </div>
+
+                    {/* Add New From Number */}
+                    <div className="flex gap-2">
+                      <Input
+                        value={newFromNumber}
+                        onChange={(e) => setNewFromNumber(e.target.value)}
+                        placeholder="Enter phone number (e.g., 7887766008)"
+                        className="flex-1"
+                      />
+                      <Button onClick={addFromNumber} disabled={!newFromNumber.trim()}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {/* Display Current From Numbers */}
+                    <div className="space-y-2">
+                      <Label>Current From Numbers ({companySettings.from_numbers.length})</Label>
+                      {companySettings.from_numbers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No from numbers added yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {companySettings.from_numbers.map((number, index) => (
+                            <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-mono">{number}</span>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => removeFromNumber(index)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end">
+                    <Button onClick={updateCompanySettings} className="gap-2">
+                      <Save className="h-4 w-4" />
+                      Save Settings
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Exotel Credentials Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Exotel API Credentials
+                  </CardTitle>
+                  <CardDescription>
+                    Configure your Exotel API credentials for making calls. These are required for the calling functionality.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* API Key */}
+                  <div className="space-y-2">
+                    <Label htmlFor="exotel-api-key">API Key</Label>
+                    <div className="relative">
+                      <Input
+                        id="exotel-api-key"
+                        type={showApiKey ? "text" : "password"}
+                        value={companySettings.exotel_api_key}
+                        onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_api_key: e.target.value }))}
+                        placeholder="Enter your Exotel API Key"
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                      >
+                        {showApiKey ? (
+                          <EyeOff className="h-4 w-4 text-gray-500" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-gray-500" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* API Token */}
+                  <div className="space-y-2">
+                    <Label htmlFor="exotel-api-token">API Token</Label>
+                    <div className="relative">
+                      <Input
+                        id="exotel-api-token"
+                        type={showApiToken ? "text" : "password"}
+                        value={companySettings.exotel_api_token}
+                        onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_api_token: e.target.value }))}
+                        placeholder="Enter your Exotel API Token"
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowApiToken(!showApiToken)}
+                      >
+                        {showApiToken ? (
+                          <EyeOff className="h-4 w-4 text-gray-500" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-gray-500" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Subdomain */}
+                  <div className="space-y-2">
+                    <Label htmlFor="exotel-subdomain">Subdomain</Label>
+                    <Input
+                      id="exotel-subdomain"
+                      value={companySettings.exotel_subdomain}
+                      onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_subdomain: e.target.value }))}
+                      placeholder="api.exotel.com"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Usually "api.exotel.com" for most accounts
+                    </p>
+                  </div>
+
+                  {/* Account SID */}
+                  <div className="space-y-2">
+                    <Label htmlFor="exotel-account-sid">Account SID</Label>
+                    <Input
+                      id="exotel-account-sid"
+                      value={companySettings.exotel_account_sid}
+                      onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_account_sid: e.target.value }))}
+                      placeholder="Enter your Exotel Account SID"
+                    />
+                  </div>
+
+                  {/* Test Connection Button */}
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm text-muted-foreground">
+                      {companySettings.exotel_api_key && companySettings.exotel_api_token && companySettings.exotel_account_sid ? (
+                        <span className="text-green-600">✓ Credentials configured</span>
+                      ) : (
+                        <span className="text-orange-600">⚠ Incomplete credentials</span>
+                      )}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      onClick={updateCompanySettings}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      Save Credentials
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
 
@@ -2881,6 +3309,22 @@ export default function AdminDashboard() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label htmlFor="groupId">Lead Group</Label>
+              <Select value={newLead.groupId || "none"} onValueChange={(value) => setNewLead(prev => ({ ...prev, groupId: value === "none" ? "" : value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select group (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No group</SelectItem>
+                  {leadGroups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.group_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setIsAddLeadModalOpen(false)}>
                 Cancel
@@ -2890,6 +3334,302 @@ export default function AdminDashboard() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Lead Group Modal */}
+      <Dialog open={isAddLeadGroupModalOpen} onOpenChange={setIsAddLeadGroupModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Lead Group</DialogTitle>
+            <DialogDescription>
+              Create a new lead group to organize your leads.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!userRole?.company_id) return;
+
+            try {
+              const { error } = await supabase
+                .from('lead_groups')
+                .insert({
+                  user_id: user?.id,
+                  group_name: newLeadGroup.groupName,
+                  company_id: userRole.company_id,
+                });
+
+              if (error) throw error;
+
+              toast({
+                title: 'Success',
+                description: 'Lead group created successfully!',
+              });
+
+              setNewLeadGroup({
+                groupName: '',
+              });
+              setIsAddLeadGroupModalOpen(false);
+              fetchUsers(); // Refresh data
+            } catch (error: any) {
+              console.error('Error adding lead group:', error);
+              toast({
+                title: 'Error',
+                description: error.message || 'Failed to create lead group. Please try again.',
+                variant: 'destructive',
+              });
+            }
+          }}>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="groupName">Group Name</Label>
+                <Input
+                  id="groupName"
+                  value={newLeadGroup.groupName}
+                  onChange={(e) => setNewLeadGroup(prev => ({ ...prev, groupName: e.target.value }))}
+                  placeholder="Enter group name"
+                  required
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <Button type="button" variant="outline" onClick={() => setIsAddLeadGroupModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!newLeadGroup.groupName}>
+                Create Group
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload CSV Modal */}
+      <Dialog open={isUploadCSVModalOpen} onOpenChange={setIsUploadCSVModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload CSV File</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to import multiple leads at once.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-sm text-gray-600 mb-2">Drop your CSV file here or click to browse</p>
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                id="csv-upload"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    // Handle CSV upload logic here
+                    console.log('CSV file selected:', file);
+                    toast({
+                      title: 'File Selected',
+                      description: `Selected file: ${file.name}`,
+                    });
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => document.getElementById('csv-upload')?.click()}
+              >
+                Choose File
+              </Button>
+            </div>
+            <div className="text-sm text-gray-500">
+              <p><strong>CSV Format:</strong></p>
+              <p>Name, Email, Contact, Description</p>
+              <p className="mt-2">Example:</p>
+              <p>John Doe, john@example.com, +1234567890, Interested in premium plan</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button type="button" variant="outline" onClick={() => setIsUploadCSVModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled>
+              Upload CSV
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Lead Modal */}
+      <Dialog open={isViewLeadModalOpen} onOpenChange={setIsViewLeadModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Lead Details</DialogTitle>
+            <DialogDescription>
+              View details for {selectedLead?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLead && (
+            <div className="space-y-4">
+              <div>
+                <Label>Name</Label>
+                <p className="text-sm font-medium">{selectedLead.name}</p>
+              </div>
+              <div>
+                <Label>Email</Label>
+                <p className="text-sm font-medium">{selectedLead.email}</p>
+              </div>
+              <div>
+                <Label>Contact</Label>
+                <p className="text-sm font-medium">{selectedLead.contact}</p>
+              </div>
+              <div>
+                <Label>Description</Label>
+                <p className="text-sm font-medium">{selectedLead.description || 'No description'}</p>
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Badge variant="secondary">{selectedLead.status}</Badge>
+              </div>
+              <div>
+                <Label>Assignment</Label>
+                {selectedLead.assigned_employee ? (
+                  <p className="text-sm text-green-600">Assigned to Employee: {selectedLead.assigned_employee.full_name}</p>
+                ) : selectedLead.assigned_manager ? (
+                  <p className="text-sm text-blue-600">Assigned to Manager: {selectedLead.assigned_manager.full_name}</p>
+                ) : (
+                  <p className="text-sm text-orange-600">Unassigned</p>
+                )}
+              </div>
+              <div>
+                <Label>Created</Label>
+                <p className="text-sm font-medium">{new Date(selectedLead.created_at).toLocaleDateString()}</p>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => setIsViewLeadModalOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              setIsViewLeadModalOpen(false);
+              handleEditLead(selectedLead);
+            }}>
+              Edit Lead
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Lead Modal */}
+      <Dialog open={isEditLeadModalOpen} onOpenChange={setIsEditLeadModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Lead</DialogTitle>
+            <DialogDescription>
+              Update details for {selectedLead?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLead && (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                const { error } = await supabase
+                  .from('leads')
+                  .update({
+                    name: selectedLead.name,
+                    email: selectedLead.email,
+                    contact: selectedLead.contact,
+                    description: selectedLead.description,
+                    user_id: selectedLead.user_id,
+                    status: selectedLead.user_id ? 'assigned' : 'unassigned',
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', selectedLead.id);
+
+                if (error) throw error;
+
+                toast({
+                  title: 'Success',
+                  description: 'Lead updated successfully!',
+                });
+
+                setIsEditLeadModalOpen(false);
+                fetchUsers(); // Refresh data
+              } catch (error: any) {
+                console.error('Error updating lead:', error);
+                toast({
+                  title: 'Error',
+                  description: error.message || 'Failed to update lead. Please try again.',
+                  variant: 'destructive',
+                });
+              }
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-name">Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={selectedLead.name}
+                    onChange={(e) => setSelectedLead(prev => ({ ...prev, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={selectedLead.email}
+                    onChange={(e) => setSelectedLead(prev => ({ ...prev, email: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-contact">Contact</Label>
+                  <Input
+                    id="edit-contact"
+                    value={selectedLead.contact}
+                    onChange={(e) => setSelectedLead(prev => ({ ...prev, contact: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-description">Description</Label>
+                  <Textarea
+                    id="edit-description"
+                    value={selectedLead.description || ''}
+                    onChange={(e) => setSelectedLead(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Enter lead description"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-assignment">Assignment</Label>
+                  <Select value={selectedLead.user_id || "unassigned"} onValueChange={(value) => setSelectedLead(prev => ({ ...prev, user_id: value === "unassigned" ? null : value }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">No assignment</SelectItem>
+                      {managers.map((manager) => (
+                        <SelectItem key={manager.user_id} value={manager.user_id}>
+                          {manager.profile?.full_name || manager.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button type="button" variant="outline" onClick={() => setIsEditLeadModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Update Lead
+                </Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
