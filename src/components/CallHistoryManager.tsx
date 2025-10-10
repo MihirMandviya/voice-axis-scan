@@ -29,11 +29,13 @@ interface Call {
   lead_id: string;
   employee_id: string;
   company_id?: string;
-  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost';
+  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed';
   notes: string;
   call_date: string;
   next_follow_up?: string;
   created_at: string;
+  exotel_call_sid?: string;
+  exotel_recording_url?: string;
   leads?: {
     name: string;
     email: string;
@@ -135,7 +137,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           
           // Fetch calls from these employees
           const { data: callsResult, error: callsResultError } = await supabase
-            .from('call_outcomes')
+            .from('call_history')
             .select(`
               *,
               leads (
@@ -161,7 +163,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
       } else {
         // Fallback: fetch all calls from employees in the company
         const { data: callsResult, error: callsResultError } = await supabase
-          .from('call_outcomes')
+          .from('call_history')
           .select(`
             *,
             leads (
@@ -228,6 +230,10 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     fetchData();
   }, [userRole?.company_id]);
 
+  const handleViewCallDetails = (callId: string) => {
+    window.open(`/call-details/${callId}`, '_blank');
+  };
+
   const handleViewAnalysis = (analysisId: string) => {
     window.open(`/analysis/${analysisId}`, '_blank');
   };
@@ -253,7 +259,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     if (window.confirm('Are you sure you want to delete this call?')) {
       try {
         const { error } = await supabase
-          .from('call_outcomes')
+          .from('call_history')
           .delete()
           .eq('id', callId);
 
@@ -617,6 +623,15 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewCallDetails(call.id)}
+                        className="gap-1"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Details
+                      </Button>
                       {hasAnalysis && analysis?.status?.toLowerCase() === 'completed' && (
                         <Button 
                           variant="outline" 
@@ -624,7 +639,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           onClick={() => handleViewAnalysis(analysis.id)}
                           className="gap-1"
                         >
-                          <Eye className="h-4 w-4" />
+                          <BarChart3 className="h-4 w-4" />
                           View Analysis
                         </Button>
                       )}

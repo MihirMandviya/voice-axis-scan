@@ -347,7 +347,7 @@ export default function AdminDashboard() {
 
       // Fetch all calls for this company
       const { data: callsData, error: callsError } = await supabase
-        .from('call_outcomes')
+        .from('call_history')
         .select('*, leads(name, email, contact), employees(full_name, email)')
         .eq('company_id', userRole.company_id)
         .order('created_at', { ascending: false });

@@ -231,7 +231,7 @@ export default function ManagerDashboard() {
         const employeeIds = employees.map(emp => emp.id);
         console.log('Manager Dashboard - Fetching calls for employee IDs:', employeeIds);
         const { data, error } = await supabase
-          .from('call_outcomes')
+          .from('call_history')
           .select('*, leads(name, email, contact), employees(full_name, email)')
           .in('employee_id', employeeIds)
           .eq('company_id', userRole.company_id)
@@ -935,7 +935,7 @@ export default function ManagerDashboard() {
                         // Get employee's leads
                         const employeeLeads = leads.filter(lead => lead.assigned_to === employee.user_id);
                         
-                        // Get employee's calls (using employee_id from call_outcomes table)
+                        // Get employee's calls (using employee_id from call_history table)
                         const employeeCalls = calls.filter(call => call.employee_id === employee.id);
                         
                         // Get unique leads that have been called by this employee
