@@ -175,7 +175,6 @@ export default function EmployeeDashboard() {
     name: "",
     email: "",
     contact: "",
-    company: "",
     description: "",
   });
   
@@ -1028,9 +1027,7 @@ export default function EmployeeDashboard() {
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!userRole?.company_id) return;
-
     try {
       const { error } = await supabase
         .from('leads')
@@ -1038,25 +1035,20 @@ export default function EmployeeDashboard() {
           name: newLead.name,
           email: newLead.email,
           contact: newLead.contact,
-          company: newLead.company || null,
           description: newLead.description || null,
           assigned_to: userRole.user_id,
           status: 'assigned',
         });
-
       if (error) throw error;
-
       toast({
         title: 'Success',
         description: 'Lead added successfully!',
       });
-
       // Reset form and close modal
       setNewLead({
         name: "",
         email: "",
         contact: "",
-        company: "",
         description: "",
       });
       setIsAddLeadModalOpen(false);
@@ -1635,9 +1627,6 @@ export default function EmployeeDashboard() {
                               <h4 className="font-medium">{lead.name}</h4>
                               <p className="text-sm text-muted-foreground">{lead.email}</p>
                               <p className="text-sm text-muted-foreground">{lead.contact}</p>
-                              {lead.company && (
-                                <p className="text-xs text-muted-foreground">{lead.company}</p>
-                              )}
                                 {selectedLeadsSection === 'all' && (
                                   <div className="flex items-center gap-2 mt-1">
                                     <Badge variant={statusIndicator.variant} className="text-xs">
@@ -2075,15 +2064,6 @@ export default function EmployeeDashboard() {
                 onChange={(e) => setNewLead(prev => ({ ...prev, contact: e.target.value }))}
                 placeholder="Enter phone number"
                 required
-              />
-            </div>
-            <div>
-              <Label htmlFor="leadCompany">Company</Label>
-              <Input
-                id="leadCompany"
-                value={newLead.company}
-                onChange={(e) => setNewLead(prev => ({ ...prev, company: e.target.value }))}
-                placeholder="Enter company name"
               />
             </div>
             <div>

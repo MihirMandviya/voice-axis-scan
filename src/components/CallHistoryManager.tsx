@@ -231,7 +231,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   }, [userRole?.company_id]);
 
   const handleViewCallDetails = (callId: string) => {
-    window.open(`/call-details/${callId}`, '_blank');
+    window.open(`/call/${callId}`, '_blank');
   };
 
   const handleViewAnalysis = (analysisId: string) => {
