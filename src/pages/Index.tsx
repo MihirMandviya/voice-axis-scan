@@ -14,7 +14,6 @@ import LoginOptions from "@/components/auth/LoginOptions";
 import CompanyOnboarding from "@/components/auth/CompanyOnboarding";
 import ManagerLogin from "@/components/auth/ManagerLogin";
 import EmployeeLogin from "@/components/auth/EmployeeLogin";
-import ExotelSetupModal from "@/components/ExotelSetupModal";
 
 type ViewType = 'landing' | 'role-selection' | 'admin-signup' | 'admin-login' | 'login-options' | 'company-onboarding' | 'manager-login' | 'employee-login' | 'auth' | 'onboarding' | 'dashboard' | 'profile';
 
@@ -24,29 +23,6 @@ const Index = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [searchParams] = useSearchParams();
-  const [showExotelSetup, setShowExotelSetup] = useState(false);
-  const [exotelSetupChecked, setExotelSetupChecked] = useState(false);
-
-  // Check Exotel setup status
-  const checkExotelSetup = async (companyId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('company_settings')
-        .select('exotel_setup_completed')
-        .eq('company_id', companyId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking Exotel setup:', error);
-        return false;
-      }
-
-      return data?.exotel_setup_completed || false;
-    } catch (error) {
-      console.error('Error checking Exotel setup:', error);
-      return false;
-    }
-  };
 
   // Check if we should show dashboard based on URL parameters
   useEffect(() => {
@@ -81,23 +57,10 @@ const Index = () => {
 
     // User is authenticated, check their role and company status
     if (userRole && company) {
-      console.log('User has role and company, checking Exotel setup');
+      console.log('User has role and company');
       console.log('Role data:', userRole);
       console.log('Company data:', company);
-      
-      // Check Exotel setup status for admins
-      if (userRole.role === 'admin' && !exotelSetupChecked) {
-        checkExotelSetup(company.id).then((isSetup) => {
-          setExotelSetupChecked(true);
-          if (!isSetup) {
-            setShowExotelSetup(true);
-          } else {
-            setCurrentView('dashboard');
-          }
-        });
-      } else {
-        setCurrentView('dashboard');
-      }
+      setCurrentView('dashboard');
     } else if (userRole && !company) {
       console.log('User has role but no company, going to company onboarding');
       console.log('Role data:', userRole);
@@ -228,10 +191,6 @@ const Index = () => {
     setCurrentView('dashboard');
   };
 
-  const handleExotelSetupComplete = () => {
-    setShowExotelSetup(false);
-    setCurrentView('dashboard');
-  };
 
   // Show loading spinner while checking auth state
   if (authLoading || profileLoading) {
@@ -305,28 +264,10 @@ const Index = () => {
       return <ProfilePage onBack={handleBackToDashboard} />;
     
     case 'dashboard':
-      return (
-        <>
-          <Dashboard onShowProfile={handleShowProfile} />
-          <ExotelSetupModal 
-            isOpen={showExotelSetup} 
-            onClose={() => setShowExotelSetup(false)} 
-            onComplete={handleExotelSetupComplete} 
-          />
-        </>
-      );
+      return <Dashboard onShowProfile={handleShowProfile} />;
     
     default:
-      return (
-        <>
-          <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />
-          <ExotelSetupModal 
-            isOpen={showExotelSetup} 
-            onClose={() => setShowExotelSetup(false)} 
-            onComplete={handleExotelSetupComplete} 
-          />
-        </>
-      );
+      return <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />;
   }
 };
 

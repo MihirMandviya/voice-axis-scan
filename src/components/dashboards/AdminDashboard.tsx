@@ -178,14 +178,8 @@ export default function AdminDashboard() {
   const [companySettings, setCompanySettings] = useState({
     caller_id: "09513886363",
     from_numbers: ["7887766008"],
-    exotel_api_key: "",
-    exotel_api_token: "",
-    exotel_subdomain: "api.exotel.com",
-    exotel_account_sid: "",
   });
   const [newFromNumber, setNewFromNumber] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [showApiToken, setShowApiToken] = useState(false);
 
   useEffect(() => {
     if (userRole && company) {
@@ -402,10 +396,6 @@ export default function AdminDashboard() {
         setCompanySettings({
           caller_id: data.caller_id || "09513886363",
           from_numbers: data.from_numbers || ["7887766008"],
-          exotel_api_key: data.exotel_api_key || "",
-          exotel_api_token: data.exotel_api_token || "",
-          exotel_subdomain: data.exotel_subdomain || "api.exotel.com",
-          exotel_account_sid: data.exotel_account_sid || "",
         });
       }
     } catch (error) {
@@ -423,10 +413,6 @@ export default function AdminDashboard() {
           company_id: userRole.company_id,
           caller_id: companySettings.caller_id,
           from_numbers: companySettings.from_numbers,
-          exotel_api_key: companySettings.exotel_api_key,
-          exotel_api_token: companySettings.exotel_api_token,
-          exotel_subdomain: companySettings.exotel_subdomain,
-          exotel_account_sid: companySettings.exotel_account_sid,
         }, {
           onConflict: 'company_id'
         });
@@ -2221,120 +2207,6 @@ export default function AdminDashboard() {
                     <Button onClick={updateCompanySettings} className="gap-2">
                       <Save className="h-4 w-4" />
                       Save Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Exotel Credentials Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" />
-                    Exotel API Credentials
-                  </CardTitle>
-                  <CardDescription>
-                    Configure your Exotel API credentials for making calls. These are required for the calling functionality.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* API Key */}
-                  <div className="space-y-2">
-                    <Label htmlFor="exotel-api-key">API Key</Label>
-                    <div className="relative">
-                      <Input
-                        id="exotel-api-key"
-                        type={showApiKey ? "text" : "password"}
-                        value={companySettings.exotel_api_key}
-                        onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_api_key: e.target.value }))}
-                        placeholder="Enter your Exotel API Key"
-                        className="pr-10"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                      >
-                        {showApiKey ? (
-                          <EyeOff className="h-4 w-4 text-gray-500" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-gray-500" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* API Token */}
-                  <div className="space-y-2">
-                    <Label htmlFor="exotel-api-token">API Token</Label>
-                    <div className="relative">
-                      <Input
-                        id="exotel-api-token"
-                        type={showApiToken ? "text" : "password"}
-                        value={companySettings.exotel_api_token}
-                        onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_api_token: e.target.value }))}
-                        placeholder="Enter your Exotel API Token"
-                        className="pr-10"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowApiToken(!showApiToken)}
-                      >
-                        {showApiToken ? (
-                          <EyeOff className="h-4 w-4 text-gray-500" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-gray-500" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Subdomain */}
-                  <div className="space-y-2">
-                    <Label htmlFor="exotel-subdomain">Subdomain</Label>
-                    <Input
-                      id="exotel-subdomain"
-                      value={companySettings.exotel_subdomain}
-                      onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_subdomain: e.target.value }))}
-                      placeholder="api.exotel.com"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Usually "api.exotel.com" for most accounts
-                    </p>
-                  </div>
-
-                  {/* Account SID */}
-                  <div className="space-y-2">
-                    <Label htmlFor="exotel-account-sid">Account SID</Label>
-                    <Input
-                      id="exotel-account-sid"
-                      value={companySettings.exotel_account_sid}
-                      onChange={(e) => setCompanySettings(prev => ({ ...prev, exotel_account_sid: e.target.value }))}
-                      placeholder="Enter your Exotel Account SID"
-                    />
-                  </div>
-
-                  {/* Test Connection Button */}
-                  <div className="flex justify-between items-center">
-                    <div className="text-sm text-muted-foreground">
-                      {companySettings.exotel_api_key && companySettings.exotel_api_token && companySettings.exotel_account_sid ? (
-                        <span className="text-green-600">✓ Credentials configured</span>
-                      ) : (
-                        <span className="text-orange-600">⚠ Incomplete credentials</span>
-                      )}
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={updateCompanySettings}
-                      className="gap-2"
-                    >
-                      <Save className="h-4 w-4" />
-                      Save Credentials
                     </Button>
                   </div>
                 </CardContent>

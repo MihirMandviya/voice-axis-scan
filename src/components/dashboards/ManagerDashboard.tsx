@@ -409,10 +409,18 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleDeleteEmployee = async (employeeId: string) => {
+  const handleDeleteEmployee = async (employeeId: string, employeeName: string) => {
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      `Are you sure you want to delete employee "${employeeName}"?\n\nThis action will deactivate the employee account.`
+    );
+    
+    if (!confirmed) return;
+
     try {
+      // Update the employees table to set is_active to false
       const { error } = await supabase
-        .from('user_roles')
+        .from('employees')
         .update({ is_active: false })
         .eq('user_id', employeeId);
 
@@ -1055,7 +1063,7 @@ export default function ManagerDashboard() {
                             <Button 
                               variant="ghost" 
                               size="icon"
-                              onClick={() => handleDeleteEmployee(employee.user_id)}
+                              onClick={() => handleDeleteEmployee(employee.user_id, employee.full_name)}
                               className="text-red-600 hover:text-red-700"
                             >
                               <Trash2 className="h-4 w-4" />

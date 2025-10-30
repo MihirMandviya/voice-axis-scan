@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ export default function CompanyOnboarding({ onComplete, onBack }: CompanyOnboard
   const { user, refreshUserData } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [authUser, setAuthUser] = useState<any>(null);
   const [formData, setFormData] = useState({
     companyName: '',
     companyEmail: '',
@@ -28,6 +29,20 @@ export default function CompanyOnboarding({ onComplete, onBack }: CompanyOnboard
     address: '',
     website: '',
   });
+
+  // Get the current user session on component mount and keep it updated
+  useEffect(() => {
+    const getUserSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setAuthUser(session.user);
+      } else if (user) {
+        // Fallback to user from AuthContext
+        setAuthUser(user);
+      }
+    };
+    getUserSession();
+  }, [user]);
 
   const industries = [
     'Technology',
@@ -47,18 +62,24 @@ export default function CompanyOnboarding({ onComplete, onBack }: CompanyOnboard
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Ensure user is authenticated
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session?.user) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to create a company.',
-        variant: 'destructive',
-      });
-      return;
+    // Use authUser state first, fallback to fresh session check
+    let currentUser = authUser;
+    
+    if (!currentUser) {
+      // Try to get session as fallback
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user) {
+        toast({
+          title: 'Error',
+          description: 'You must be logged in to create a company. Please try signing in again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      currentUser = session.user;
+      setAuthUser(currentUser); // Update state for next time
     }
     
-    const currentUser = session.user;
     console.log('Current authenticated user:', currentUser.id, currentUser.email);
     
     // Verify the user is properly authenticated by checking the session

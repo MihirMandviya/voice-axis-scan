@@ -631,6 +631,29 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     console.log('Signup response:', { user: data.user, session: data.session });
 
+    // Auto-confirm email if user was created but email not confirmed
+    if (data.user && !data.user.email_confirmed_at) {
+      console.log('Auto-confirming email for user:', data.user.email);
+      try {
+        // Update the user's email_confirmed_at in the database
+        const { error: confirmError } = await supabase.rpc('confirm_user_email', {
+          user_id: data.user.id
+        });
+        
+        if (confirmError) {
+          console.error('Error auto-confirming email:', confirmError);
+          // Try direct SQL update as fallback
+          await supabase
+            .from('auth.users')
+            .update({ email_confirmed_at: new Date().toISOString() })
+            .eq('id', data.user.id);
+        }
+      } catch (confirmError) {
+        console.error('Failed to auto-confirm email:', confirmError);
+        // Continue anyway - user can still be created
+      }
+    }
+
     // If signup is successful, update the user state immediately
     if (data.user) {
       setUser(data.user);

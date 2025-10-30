@@ -1027,7 +1027,16 @@ export default function EmployeeDashboard() {
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userRole?.company_id) return;
+    
+    if (!userRole?.company_id || !user?.id) {
+      toast({
+        title: 'Error',
+        description: 'Unable to add lead. Missing user or company information.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('leads')
@@ -1036,14 +1045,19 @@ export default function EmployeeDashboard() {
           email: newLead.email,
           contact: newLead.contact,
           description: newLead.description || null,
-          assigned_to: userRole.user_id,
+          user_id: user.id, // Required: user who created the lead
+          company_id: userRole.company_id, // Required: company association
+          assigned_to: user.id, // Assign to the employee creating it
           status: 'assigned',
         });
+      
       if (error) throw error;
+      
       toast({
         title: 'Success',
         description: 'Lead added successfully!',
       });
+      
       // Reset form and close modal
       setNewLead({
         name: "",

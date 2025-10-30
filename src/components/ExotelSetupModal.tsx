@@ -71,7 +71,7 @@ export default function ExotelSetupModal({ isOpen, onClose, onComplete }: Exotel
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Phone className="h-6 w-6 text-blue-600" />
@@ -82,7 +82,7 @@ export default function ExotelSetupModal({ isOpen, onClose, onComplete }: Exotel
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 pb-4">
           {/* Step Indicator */}
           <div className="flex items-center justify-center space-x-4">
             <div className={`flex items-center gap-2 ${currentStep >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
