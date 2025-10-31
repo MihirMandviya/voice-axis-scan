@@ -116,7 +116,7 @@ interface Call {
   lead_id: string;
   employee_id: string;
   company_id?: string;
-  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed';
+  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered';
   notes: string;
   call_date: string;
   next_follow_up?: string;
@@ -162,7 +162,6 @@ export default function EmployeeDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCallModalOpen, setIsCallModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
-  const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [recordingUrl, setRecordingUrl] = useState("");
@@ -171,12 +170,6 @@ export default function EmployeeDashboard() {
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [nextFollowUpTime, setNextFollowUpTime] = useState("");
   const [analysisFileName, setAnalysisFileName] = useState("");
-  const [newLead, setNewLead] = useState({
-    name: "",
-    email: "",
-    contact: "",
-    description: "",
-  });
   
   // Exotel calling state
   const [isExotelCallModalOpen, setIsExotelCallModalOpen] = useState(false);
@@ -264,38 +257,27 @@ export default function EmployeeDashboard() {
         setCompletedLeads(completedLeadsArray);
       }
 
-      // First get the employee ID for this user
-      const { data: employeeData, error: employeeError } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', userRole.user_id)
-        .single();
+      // Fetch calls made by this employee from call_history table
+      // Note: employee_id in call_history references employees.user_id (not employees.id)
+      const { data: callsData, error: callsError } = await supabase
+        .from('call_history')
+        .select(`
+          *,
+          leads (
+            name,
+            email,
+            contact
+          )
+        `)
+        .eq('employee_id', userRole.user_id)
+        .order('created_at', { ascending: false });
 
-      if (employeeError || !employeeData) {
-        console.error('Employee not found:', employeeError);
+      if (callsError) {
+        console.error('Calls error:', callsError);
         setCalls([]);
       } else {
-        // Fetch calls made by this employee from call_history table
-        const { data: callsData, error: callsError } = await supabase
-          .from('call_history')
-          .select(`
-            *,
-            leads (
-              name,
-              email,
-              contact
-            )
-          `)
-          .eq('employee_id', employeeData.id)
-          .order('created_at', { ascending: false });
-
-        if (callsError) {
-          console.error('Calls error:', callsError);
-          setCalls([]);
-        } else {
-          console.log('EmployeeDashboard - Fetched calls:', callsData?.length || 0, callsData);
-          setCalls(callsData || []);
-        }
+        console.log('EmployeeDashboard - Fetched calls:', callsData?.length || 0, callsData);
+        setCalls(callsData || []);
       }
 
       // Fetch analyses for recordings made by this employee
@@ -861,11 +843,39 @@ export default function EmployeeDashboard() {
           setCallPollingInterval(null);
           setIsCallInProgress(false);
           
-          console.log(`📞 Call failed with status: ${status}`);
+          console.log(`📞 Call not answered with status: ${status}`);
+          
+          // Save to call history with "Not Answered" status
+          try {
+            // Note: employee_id in call_history references employees.user_id (not employees.id)
+            const { error: insertError } = await supabase.from('call_history').insert({
+              lead_id: selectedLead?.id,
+              employee_id: userRole.user_id,
+              company_id: userRole?.company_id,
+              outcome: 'not_answered',
+              notes: 'Call was not answered by the recipient',
+              exotel_call_sid: currentCallSid,
+              exotel_status: status,
+              exotel_from_number: fromNumber,
+              exotel_to_number: toNumber,
+              exotel_caller_id: callerId,
+              exotel_response: {},
+            });
+            
+            if (insertError) {
+              console.error('❌ Error saving call to history:', insertError);
+            } else {
+              console.log('✅ Call recorded in history as "not_answered"');
+              // Refresh data to show the new call in history
+              fetchData();
+            }
+          } catch (error) {
+            console.error('❌ Error saving call to history:', error);
+          }
           
           toast({
-            title: 'Call Failed',
-            description: `Call failed with status: ${status}`,
+            title: 'Call Not Answered',
+            description: 'The call was not answered by the recipient.',
             variant: 'destructive',
           });
         }
@@ -1023,58 +1033,6 @@ export default function EmployeeDashboard() {
     setCallStatus('');
     setCurrentCallSid('');
     setIsExotelCallModalOpen(false);
-  };
-
-  const handleAddLead = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!userRole?.company_id || !user?.id) {
-      toast({
-        title: 'Error',
-        description: 'Unable to add lead. Missing user or company information.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('leads')
-        .insert({
-          name: newLead.name,
-          email: newLead.email,
-          contact: newLead.contact,
-          description: newLead.description || null,
-          user_id: user.id, // Required: user who created the lead
-          company_id: userRole.company_id, // Required: company association
-          assigned_to: user.id, // Assign to the employee creating it
-          status: 'assigned',
-        });
-      
-      if (error) throw error;
-      
-      toast({
-        title: 'Success',
-        description: 'Lead added successfully!',
-      });
-      
-      // Reset form and close modal
-      setNewLead({
-        name: "",
-        email: "",
-        contact: "",
-        description: "",
-      });
-      setIsAddLeadModalOpen(false);
-      fetchData();
-    } catch (error: any) {
-      console.error('Error adding lead:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to add lead. Please try again.',
-        variant: 'destructive',
-      });
-    }
   };
 
   const handleSignOut = async () => {
@@ -1529,10 +1487,6 @@ export default function EmployeeDashboard() {
                     <RefreshCw className="h-4 w-4" />
                     Refresh
                   </Button>
-                <Button onClick={() => setIsAddLeadModalOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Lead
-                  </Button>
                 </div>
               </div>
 
@@ -1600,19 +1554,10 @@ export default function EmployeeDashboard() {
                       {selectedLeadsSection === 'followup' && <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />}
                       {selectedLeadsSection === 'completed' && <Check className="h-12 w-12 text-muted-foreground mx-auto mb-4" />}
                       <p className="text-muted-foreground">
-                        {selectedLeadsSection === 'all' && 'No leads found'}
+                        {selectedLeadsSection === 'all' && 'No leads assigned to you yet'}
                         {selectedLeadsSection === 'followup' && 'No follow-up leads at the moment'}
                         {selectedLeadsSection === 'completed' && 'No completed leads yet'}
                       </p>
-                      {selectedLeadsSection === 'all' && (
-                      <Button 
-                        className="mt-4" 
-                        onClick={() => setIsAddLeadModalOpen(true)}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add First Lead
-                      </Button>
-                      )}
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -1781,11 +1726,24 @@ export default function EmployeeDashboard() {
                         return (
                           <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg">
                             <div className="flex items-center space-x-4">
-                              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                <Phone className="h-5 w-5 text-blue-600" />
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                call.outcome === 'not_answered' 
+                                  ? 'bg-red-100' 
+                                  : 'bg-blue-100'
+                              }`}>
+                                <Phone className={`h-5 w-5 ${
+                                  call.outcome === 'not_answered' 
+                                    ? 'text-red-600' 
+                                    : 'text-blue-600'
+                                }`} />
                               </div>
                               <div>
-                                <h4 className="font-medium">Call with {call.leads?.name || 'Lead'}</h4>
+                                <h4 className="font-medium flex items-center gap-2">
+                                  Call with {call.leads?.name || 'Lead'}
+                                  {call.outcome === 'not_answered' && (
+                                    <Badge variant="destructive" className="text-xs">Not Answered</Badge>
+                                  )}
+                                </h4>
                                 <p className="text-sm text-muted-foreground">
                                   {call.leads?.email} • {call.leads?.contact}
                                 </p>
@@ -2033,68 +1991,6 @@ export default function EmployeeDashboard() {
               <Button type="submit" disabled={!callOutcome.trim()}>
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Save Call
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Lead Modal */}
-      <Dialog open={isAddLeadModalOpen} onOpenChange={setIsAddLeadModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add New Lead</DialogTitle>
-            <DialogDescription>
-              Add a new lead to your list.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleAddLead} className="space-y-4">
-            <div>
-              <Label htmlFor="leadName">Name *</Label>
-              <Input
-                id="leadName"
-                value={newLead.name}
-                onChange={(e) => setNewLead(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Enter lead name"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="leadEmail">Email *</Label>
-              <Input
-                id="leadEmail"
-                type="email"
-                value={newLead.email}
-                onChange={(e) => setNewLead(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="Enter email address"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="leadContact">Contact *</Label>
-              <Input
-                id="leadContact"
-                value={newLead.contact}
-                onChange={(e) => setNewLead(prev => ({ ...prev, contact: e.target.value }))}
-                placeholder="Enter phone number"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="leadDescription">Description</Label>
-              <Input
-                id="leadDescription"
-                value={newLead.description}
-                onChange={(e) => setNewLead(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Enter description"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsAddLeadModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!newLead.name || !newLead.email || !newLead.contact}>
-                Add Lead
               </Button>
             </div>
           </form>

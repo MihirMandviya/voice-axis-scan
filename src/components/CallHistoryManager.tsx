@@ -29,7 +29,7 @@ interface Call {
   lead_id: string;
   employee_id: string;
   company_id?: string;
-  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed';
+  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered';
   notes: string;
   call_date: string;
   next_follow_up?: string;
@@ -546,8 +546,16 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                 return (
                   <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Phone className="h-5 w-5 text-blue-600" />
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        call.outcome === 'not_answered' 
+                          ? 'bg-red-100' 
+                          : 'bg-blue-100'
+                      }`}>
+                        <Phone className={`h-5 w-5 ${
+                          call.outcome === 'not_answered' 
+                            ? 'text-red-600' 
+                            : 'text-blue-600'
+                        }`} />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -556,6 +564,9 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                             <User className="h-3 w-3 mr-1" />
                             {call.employees?.full_name || 'Unknown Employee'}
                           </Badge>
+                          {call.outcome === 'not_answered' && (
+                            <Badge variant="destructive" className="text-xs">Not Answered</Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {call.leads?.email} • {call.leads?.contact}
