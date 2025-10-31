@@ -412,23 +412,29 @@ export default function ManagerDashboard() {
   const handleDeleteEmployee = async (employeeId: string, employeeName: string) => {
     // Show confirmation dialog
     const confirmed = window.confirm(
-      `Are you sure you want to delete employee "${employeeName}"?\n\nThis action will deactivate the employee account.`
+      `Are you sure you want to delete employee "${employeeName}"?\n\nThis action will permanently remove the employee from the database.`
     );
     
     if (!confirmed) return;
 
     try {
-      // Update the employees table to set is_active to false
+      // Delete the employee record permanently
       const { error } = await supabase
         .from('employees')
-        .update({ is_active: false })
+        .delete()
         .eq('user_id', employeeId);
 
       if (error) throw error;
 
+      // Also delete the user_role if it exists
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', employeeId);
+
       toast({
         title: 'Success',
-        description: 'Employee deactivated successfully!',
+        description: 'Employee deleted successfully!',
       });
 
       fetchData();

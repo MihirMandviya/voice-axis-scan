@@ -311,18 +311,60 @@ export default function AdminDashboard() {
       // Fetch all leads for this company
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
-        .select(`
-          *,
-          assigned_employee:employees!assigned_to(full_name, email),
-          assigned_manager:managers!user_id(full_name, email)
-        `)
+        .select('*')
         .eq('company_id', userRole.company_id);
 
       if (leadsError) {
         console.error('Error fetching leads:', leadsError);
       } else {
-        setLeads(leadsData || []);
-        console.log('Fetched leads:', leadsData);
+        // Manually join with employees and managers tables
+        const leadsWithAssignments = await Promise.all(
+          (leadsData || []).map(async (lead) => {
+            let assignedEmployee = null;
+            let assignedManager = null;
+
+            // Check if assigned_to exists (employee)
+            if (lead.assigned_to) {
+              const { data: empData } = await supabase
+                .from('employees')
+                .select('full_name, email')
+                .eq('user_id', lead.assigned_to)
+                .single();
+              assignedEmployee = empData;
+            }
+
+            // Check if user_id exists (manager or creator)
+            if (lead.user_id) {
+              // Try to find in managers table
+              const { data: mgrData } = await supabase
+                .from('managers')
+                .select('full_name, email')
+                .eq('user_id', lead.user_id)
+                .single();
+              
+              if (mgrData) {
+                assignedManager = mgrData;
+              } else {
+                // Try to find in employees table
+                const { data: empData } = await supabase
+                  .from('employees')
+                  .select('full_name, email')
+                  .eq('user_id', lead.user_id)
+                  .single();
+                assignedEmployee = empData;
+              }
+            }
+
+            return {
+              ...lead,
+              assigned_employee: assignedEmployee,
+              assigned_manager: assignedManager,
+            };
+          })
+        );
+
+        setLeads(leadsWithAssignments);
+        console.log('Fetched leads:', leadsWithAssignments);
       }
 
       // Fetch all lead groups for this company
@@ -455,6 +497,47 @@ export default function AdminDashboard() {
     if (!userRole?.company_id) return;
 
     try {
+      // Validate email uniqueness within the SAME role only
+      const emailToCheck = newUser.email.toLowerCase().trim();
+      
+      if (addUserType === 'manager') {
+        // Check if email already exists as MANAGER
+        const { data: existingManagers } = await supabase
+          .from('managers')
+          .select('email, full_name')
+          .eq('company_id', userRole.company_id)
+          .eq('email', emailToCheck)
+          .eq('is_active', true);
+
+        if (existingManagers && existingManagers.length > 0) {
+          toast({
+            title: 'Email Already Exists',
+            description: `A manager with email ${newUser.email} already exists in your company.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+      } else if (addUserType === 'employee') {
+        // Check if email already exists as EMPLOYEE
+        const { data: existingEmployees } = await supabase
+          .from('employees')
+          .select('email, full_name')
+          .eq('company_id', userRole.company_id)
+          .eq('email', emailToCheck)
+          .eq('is_active', true);
+
+        if (existingEmployees && existingEmployees.length > 0) {
+          toast({
+            title: 'Email Already Exists',
+            description: `An employee with email ${newUser.email} already exists in your company.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      // Note: Additional validation for admin emails will happen at the database level via triggers
+
       const demoUserId = crypto.randomUUID();
       
       console.log('Creating user with ID:', demoUserId);
@@ -467,14 +550,25 @@ export default function AdminDashboard() {
             user_id: demoUserId,
             company_id: userRole.company_id,
             full_name: newUser.fullName,
-            email: newUser.email,
+            email: emailToCheck,
             department: newUser.department,
             phone: newUser.phone,
             password: newUser.password,
             is_active: true,
           });
 
-        if (managerError) throw managerError;
+        if (managerError) {
+          // Check if it's a unique constraint violation
+          if (managerError.code === '23505') {
+            toast({
+              title: 'Email Already Exists',
+              description: `A manager with email ${newUser.email} already exists in your company.`,
+              variant: 'destructive',
+            });
+            return;
+          }
+          throw managerError;
+        }
 
         // Create user role for manager
         const { error: roleError } = await supabase
@@ -616,24 +710,41 @@ export default function AdminDashboard() {
 
     try {
       if (selectedUser.role === 'manager') {
+        // Delete the manager record
         const { error } = await supabase
           .from('managers')
-          .update({ is_active: false })
+          .delete()
           .eq('id', selectedUser.id);
 
         if (error) throw error;
+
+        // Also delete the user_role if it exists
+        await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', selectedUser.user_id)
+          .eq('company_id', userRole?.company_id);
+
       } else {
+        // Delete the employee record
         const { error } = await supabase
           .from('employees')
-          .update({ is_active: false })
+          .delete()
           .eq('id', selectedUser.id);
 
         if (error) throw error;
+
+        // Also delete the user_role if it exists
+        await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', selectedUser.user_id)
+          .eq('company_id', userRole?.company_id);
       }
 
       toast({
         title: 'Success',
-        description: 'User deactivated successfully!',
+        description: 'User deleted successfully!',
       });
 
       setIsDeleteUserModalOpen(false);
@@ -698,6 +809,29 @@ export default function AdminDashboard() {
     if (!userRole?.company_id) return;
 
     try {
+      // Check if email already exists as EMPLOYEE only (same person can be both manager and employee)
+      const { data: existingUsers, error: checkError } = await supabase
+        .from('employees')
+        .select('email, full_name')
+        .eq('company_id', userRole.company_id)
+        .eq('email', newEmployee.email.toLowerCase().trim())
+        .eq('is_active', true);
+
+      if (checkError) {
+        console.error('Error checking email:', checkError);
+      }
+
+      if (existingUsers && existingUsers.length > 0) {
+        toast({
+          title: 'Email Already Exists',
+          description: `An employee with email ${newEmployee.email} already exists in your company.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Note: Additional validation for admin emails will happen at the database level via triggers
+
       const demoUserId = crypto.randomUUID();
       
       console.log('Creating employee with ID:', demoUserId);
@@ -710,13 +844,42 @@ export default function AdminDashboard() {
           company_id: userRole.company_id,
           manager_id: newEmployee.managerId,
           full_name: newEmployee.fullName,
-          email: newEmployee.email,
+          email: newEmployee.email.toLowerCase().trim(),
           phone: newEmployee.phone,
           password: newEmployee.password,
           is_active: true,
         });
 
-      if (employeeError) throw employeeError;
+      if (employeeError) {
+        // Check if it's a unique constraint violation
+        if (employeeError.code === '23505') {
+          toast({
+            title: 'Email Already Exists',
+            description: `An employee with email ${newEmployee.email} already exists in your company.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw employeeError;
+      }
+
+      // Create user role for employee
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: demoUserId,
+          company_id: userRole.company_id,
+          role: 'employee',
+          manager_id: newEmployee.managerId,
+          is_active: true,
+        });
+
+      if (roleError) throw roleError;
+
+      toast({
+        title: 'Employee Created',
+        description: `${newEmployee.fullName} has been successfully added as an employee.`,
+      });
 
       // Show credentials modal
       setGeneratedCredentials({
@@ -1403,7 +1566,7 @@ export default function AdminDashboard() {
                               className="text-red-600"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Deactivate
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1478,7 +1641,7 @@ export default function AdminDashboard() {
                               className="text-red-600"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Deactivate
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1589,7 +1752,7 @@ export default function AdminDashboard() {
                               className="text-red-600"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Deactivate
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1711,7 +1874,7 @@ export default function AdminDashboard() {
                               className="text-red-600"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Deactivate
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -2587,10 +2750,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-sm text-yellow-800">
-                <strong>Demo Note:</strong> This creates a user role using your current user ID for demonstration purposes. 
-                In production, you would create a real auth user first, then assign the role.
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Important:</strong> Please save these credentials. The {generatedCredentials?.role} will need them to log in.
               </p>
             </div>
             <div className="flex justify-end">
@@ -3097,10 +3259,10 @@ export default function AdminDashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-600" />
-              Deactivate User
+              Delete User
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to deactivate {selectedUser?.full_name}? This action will prevent them from logging in.
+              Are you sure you want to delete {selectedUser?.full_name}? This action will permanently remove them from the database and cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
@@ -3109,7 +3271,7 @@ export default function AdminDashboard() {
             </Button>
             <Button variant="destructive" onClick={handleDeleteUser}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Deactivate User
+              Delete User
             </Button>
           </div>
         </DialogContent>

@@ -34,8 +34,8 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signInAdmin: (email: string, password: string) => Promise<User>;
-  signInManager: (email: string, password: string) => Promise<User>;
-  signInEmployee: (email: string, password: string) => Promise<User>;
+  signInManager: (email: string, password: string, companyId: string) => Promise<User>;
+  signInEmployee: (email: string, password: string, companyId: string) => Promise<User>;
   signUpWithEmail: (email: string, password: string, fullName: string) => Promise<{ user: User; needsConfirmation: boolean }>;
   refreshUserData: () => Promise<void>;
   signOut: () => Promise<void>;
