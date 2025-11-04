@@ -204,7 +204,7 @@ export default function AdminReportsPage() {
           return employeeId && employeeUserIds.includes(employeeId);
         }) || [];
 
-        const completedAnalyses = managerAnalyses.filter(a => a.status === 'completed');
+        const completedAnalyses = managerAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
 
         managerStatsMap.set(manager.id, {
           total_employees: managerEmployees.length,
@@ -215,11 +215,11 @@ export default function AdminReportsPage() {
           conversion_rate: managerCalls.length > 0 ? 
             ((managerCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / managerCalls.length) * 100).toFixed(1) : 0,
           avg_sentiment: completedAnalyses.length > 0 ?
-            (completedAnalyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
+            (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
           avg_engagement: completedAnalyses.length > 0 ?
-            (completedAnalyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
+            (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
           avg_confidence: completedAnalyses.length > 0 ?
-            (completedAnalyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
+            (completedAnalyses.reduce((sum, a) => sum + ((parseFloat(a.confidence_score_executive) + parseFloat(a.confidence_score_person)) / 2 || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
           total_analyses: completedAnalyses.length,
           employees: managerEmployees
         });
@@ -237,7 +237,7 @@ export default function AdminReportsPage() {
           return employeeId === employee.user_id;
         }) || [];
 
-        const completedAnalyses = employeeAnalyses.filter(a => a.status === 'completed');
+        const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
 
         employeeStatsMap.set(employee.id, {
           total_calls: employeeCalls.length,
@@ -247,11 +247,11 @@ export default function AdminReportsPage() {
           conversion_rate: employeeCalls.length > 0 ? 
             ((employeeCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / employeeCalls.length) * 100).toFixed(1) : 0,
           avg_sentiment: completedAnalyses.length > 0 ?
-            (completedAnalyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
+            (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
           avg_engagement: completedAnalyses.length > 0 ?
-            (completedAnalyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
+            (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
           avg_confidence: completedAnalyses.length > 0 ?
-            (completedAnalyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
+            (completedAnalyses.reduce((sum, a) => sum + ((parseFloat(a.confidence_score_executive) + parseFloat(a.confidence_score_person)) / 2 || 0), 0) / completedAnalyses.length).toFixed(1) : 0,
           total_analyses: completedAnalyses.length
         });
       });
@@ -267,7 +267,7 @@ export default function AdminReportsPage() {
       
       const totalCalls = callsData?.length || 0;
       const completedCalls = callsData?.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length || 0;
-      const allCompletedAnalyses = analysesData?.filter(a => a.status === 'completed') || [];
+      const allCompletedAnalyses = analysesData?.filter(a => a.status?.toLowerCase() === 'completed') || [];
 
       console.log('Total calls in period:', totalCalls);
       console.log('Completed calls:', completedCalls);
@@ -280,9 +280,9 @@ export default function AdminReportsPage() {
         completed_calls: completedCalls,
         conversion_rate: totalCalls > 0 ? ((completedCalls / totalCalls) * 100).toFixed(1) : 0,
         avg_sentiment: allCompletedAnalyses.length > 0 ?
-          (allCompletedAnalyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / allCompletedAnalyses.length).toFixed(1) : 0,
+          (allCompletedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / allCompletedAnalyses.length).toFixed(1) : 0,
         avg_engagement: allCompletedAnalyses.length > 0 ?
-          (allCompletedAnalyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / allCompletedAnalyses.length).toFixed(1) : 0,
+          (allCompletedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / allCompletedAnalyses.length).toFixed(1) : 0,
         total_analyses: allCompletedAnalyses.length
       };
       

@@ -224,18 +224,19 @@ export default function ManagerDashboard() {
       }
 
       // Fetch call outcomes made by employees under this manager
-      console.log('Employee IDs for call outcomes:', employees.map(emp => emp.id));
+      // NOTE: call_history.employee_id stores user_id, not employees.id
+      console.log('Employee user_ids for call outcomes:', formattedEmployees.map(emp => emp.user_id));
       
       let callsData = [];
       let callsError = null;
       
-      if (employees.length > 0) {
-        const employeeIds = employees.map(emp => emp.id);
-        console.log('Manager Dashboard - Fetching calls for employee IDs:', employeeIds);
+      if (formattedEmployees.length > 0) {
+        const employeeUserIds = formattedEmployees.map(emp => emp.user_id);
+        console.log('Manager Dashboard - Fetching calls for employee user_ids:', employeeUserIds);
         const { data, error } = await supabase
           .from('call_history')
           .select('*, leads(name, email, contact), employees(full_name, email)')
-          .in('employee_id', employeeIds)
+          .in('employee_id', employeeUserIds)
           .eq('company_id', userRole.company_id)
           .order('created_at', { ascending: false });
         callsData = data;

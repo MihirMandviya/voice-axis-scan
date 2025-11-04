@@ -176,7 +176,7 @@ export default function EmployeeReportsPage() {
       console.log('Not answered calls:', notAnsweredCalls);
       console.log('All calls outcomes:', callsWithLeads?.map(c => c.outcome));
 
-      const completedAnalyses = (analysesData || []).filter(a => a && a.status === 'completed');
+      const completedAnalyses = (analysesData || []).filter(a => a && a.status?.toLowerCase() === 'completed');
       
       console.log('Completed analyses:', completedAnalyses.length);
 
