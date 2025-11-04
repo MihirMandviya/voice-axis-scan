@@ -88,8 +88,9 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   const [recordingUrl, setRecordingUrl] = useState("");
   const [analysisFileName, setAnalysisFileName] = useState("");
   const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
+  const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
 
-  const WEBHOOK_URL = "https://n8nautomation.site/webhook/a2025371-8955-4ef4-8a74-0686456b3003";
+  const WEBHOOK_URL = "https://n8nautomation.site/webhook/b1df7b1a-d5df-4b49-b310-4a7e26d76417";
 
   // Function to send webhook in background
   const sendWebhookInBackground = async (webhookPayload: any) => {
@@ -133,11 +134,17 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           .eq('manager_id', managerId)
           .eq('is_active', true);
 
+        console.log('Manager ID:', managerId);
+        console.log('Employees under manager:', employeesData);
+
         if (employeesError) {
           console.error('Error fetching employees:', employeesError);
           callsError = employeesError;
         } else if (employeesData && employeesData.length > 0) {
-          const employeeIds = employeesData.map(emp => emp.id);
+          // Use user_id instead of id because call_history.employee_id stores user_id
+          const employeeUserIds = employeesData.map(emp => emp.user_id);
+          
+          console.log('Employee user_ids:', employeeUserIds);
           
           // Fetch calls from these employees
           const { data: callsResult, error: callsResultError } = await supabase
@@ -154,8 +161,10 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                 email
               )
             `)
-            .in('employee_id', employeeIds)
+            .in('employee_id', employeeUserIds)
             .order('created_at', { ascending: false });
+          
+          console.log('Calls fetched for manager:', callsResult?.length || 0, callsResult);
 
           if (callsResultError) {
             console.error('Calls error:', callsResultError);
@@ -163,6 +172,9 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           } else {
             callsData = callsResult || [];
           }
+        } else {
+          console.log('No employees found under this manager or employees list is empty');
+          callsData = [];
         }
       } else {
         // Fallback: fetch all calls from employees in the company
@@ -220,6 +232,19 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
         setAnalyses([]);
       } else {
         setAnalyses(analysesData || []);
+        
+        // Remove calls from processing set if they now have completed/failed analyses
+        if (analysesData && analysesData.length > 0) {
+          setProcessingCalls(prev => {
+            const newSet = new Set(prev);
+            analysesData.forEach(analysis => {
+              if (analysis.call_id && (analysis.status?.toLowerCase() === 'completed' || analysis.status?.toLowerCase() === 'failed')) {
+                newSet.delete(analysis.call_id);
+              }
+            });
+            return newSet;
+          });
+        }
       }
 
     } catch (error) {
@@ -238,6 +263,28 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     fetchData();
   }, [userRole?.company_id]);
 
+  // More frequent auto-refresh when there are processing analyses
+  useEffect(() => {
+    if (processingCalls.size === 0) return;
+
+    const interval = setInterval(() => {
+      console.log('Auto-refreshing to check analysis status...');
+      fetchData();
+    }, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [processingCalls.size]);
+
+  // General periodic refresh to catch updates from other users
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('Periodic refresh of call history and analyses...');
+      fetchData();
+    }, 10000); // Refresh every 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleViewCallDetails = (callId: string) => {
     window.open(`/call/${callId}`, '_blank');
   };
@@ -246,9 +293,172 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     window.open(`/analysis/${analysisId}`, '_blank');
   };
 
-  const handleGetAnalysis = (call: Call) => {
-    setSelectedCall(call);
-    setIsAnalysisModalOpen(true);
+  const handleGetAnalysis = async (call: Call) => {
+    // Check if call has a recording URL
+    if (!call.exotel_recording_url || call.exotel_recording_url.trim() === '') {
+      toast({
+        title: 'No Recording Available',
+        description: 'This call does not have a recording URL. Please ensure the call was recorded.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Immediately add to processing set to show UI feedback
+    setProcessingCalls(prev => new Set(prev).add(call.id));
+
+    try {
+      const recordingUrl = call.exotel_recording_url.trim();
+      const fileName = `call_${call.id}_${new Date(call.created_at).toISOString().replace(/[:.]/g, '-')}`;
+
+      // Step 1: Check if recording already exists for this call (auto-created by trigger)
+      let { data: existingRecording, error: recordingCheckError } = await supabase
+        .from('recordings')
+        .select('*')
+        .eq('user_id', call.employee_id)
+        .eq('stored_file_url', recordingUrl)
+        .maybeSingle();
+
+      if (recordingCheckError) {
+        console.error('Error checking for existing recording:', recordingCheckError);
+      }
+
+      let recording = existingRecording;
+
+      // If no recording exists, create one (backward compatibility)
+      if (!recording) {
+        const { data: newRecording, error: recordingError } = await supabase
+          .from('recordings')
+          .insert({
+            user_id: call.employee_id,
+            company_id: call.company_id,
+            stored_file_url: recordingUrl,
+            file_name: fileName,
+            status: 'pending',
+            transcript: call.notes || '',
+          })
+          .select()
+          .single();
+
+        if (recordingError) throw recordingError;
+        recording = newRecording;
+      }
+
+      // Step 2: Check if analysis already exists for this call
+      let { data: existingAnalysis, error: analysisCheckError } = await supabase
+        .from('analyses')
+        .select('*')
+        .eq('call_id', call.id)
+        .maybeSingle();
+
+      if (analysisCheckError) {
+        console.error('Error checking for existing analysis:', analysisCheckError);
+      }
+
+      let analysis = existingAnalysis;
+
+      // If no analysis exists, create one (backward compatibility)
+      if (!analysis) {
+        const { data: newAnalysis, error: analysisError } = await supabase
+          .from('analyses')
+          .insert({
+            recording_id: recording.id,
+            call_id: call.id,
+            user_id: call.employee_id,
+            company_id: call.company_id,
+            status: 'processing',
+            sentiment_score: null,
+            engagement_score: null,
+            confidence_score_executive: null,
+            confidence_score_person: null,
+            objections_handled: null,
+            next_steps: null,
+            improvements: null,
+            call_outcome: null,
+            detailed_call_analysis: null,
+            short_summary: null
+          })
+          .select()
+          .single();
+
+        if (analysisError) {
+          console.warn('Failed to create analysis record:', analysisError);
+          setProcessingCalls(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(call.id);
+            return newSet;
+          });
+          throw analysisError;
+        }
+        analysis = newAnalysis;
+      } else {
+        // If analysis exists but isn't processing, update its status
+        if (analysis.status !== 'processing') {
+          const { error: updateError } = await supabase
+            .from('analyses')
+            .update({ status: 'processing' })
+            .eq('id', analysis.id);
+
+          if (updateError) {
+            console.warn('Failed to update analysis status:', updateError);
+          } else {
+            analysis.status = 'processing';
+          }
+        }
+      }
+
+      // Immediately update the analyses state to show processing status
+      if (analysis) {
+        setAnalyses(prev => {
+          const filtered = prev.filter(a => a.id !== analysis.id);
+          return [...filtered, analysis];
+        });
+      }
+
+      // Step 3: Send to webhook for analysis with accurate IDs
+      const webhookPayload = {
+        url: recordingUrl,
+        name: fileName,
+        recording_id: recording.id,
+        analysis_id: analysis.id,
+        user_id: call.employee_id,
+        call_id: call.id,
+        timestamp: new Date().toISOString(),
+        source: managerId ? 'voice-axis-scan-manager-dashboard' : 'voice-axis-scan-admin-dashboard',
+        url_validated: true,
+        validation_method: 'auto_submission'
+      };
+
+      console.log('🚀 Sending webhook POST request to:', WEBHOOK_URL);
+      console.log('📦 Webhook payload (with accurate IDs):', webhookPayload);
+
+      sendWebhookInBackground(webhookPayload);
+
+      toast({
+        title: 'Processing Started',
+        description: 'The call recording is being analyzed. This may take a few moments.',
+      });
+      
+      // Refresh data after a short delay to get updated status
+      setTimeout(() => {
+        fetchData();
+      }, 1000);
+    } catch (error: any) {
+      console.error('Error submitting analysis:', error);
+      
+      // Remove from processing set on error
+      setProcessingCalls(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(call.id);
+        return newSet;
+      });
+      
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to submit analysis. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const toggleFollowUpDetails = (callId: string) => {
@@ -422,7 +632,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
       try {
         const { data: employeesData, error: employeesError } = await supabase
           .from('employees')
-          .select('id, full_name, email')
+          .select('id, user_id, full_name, email')
           .eq('manager_id', managerId)
           .eq('is_active', true);
 
@@ -440,8 +650,9 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   }, [managerId]);
 
   // Use all employees for filter, not just those who made calls
+  // Use user_id as the id since employee_id in call_history is the user_id
   const employees = allEmployees.map(emp => ({
-    id: emp.id,
+    id: emp.user_id,
     name: emp.full_name || 'Unknown Employee'
   }));
 
@@ -550,6 +761,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                 // Find analysis for this call using call_id
                 const analysis = analyses.find(a => a.call_id === call.id);
                 const hasAnalysis = !!analysis;
+                const isProcessing = processingCalls.has(call.id);
                 
                 return (
                   <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -625,28 +837,30 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
-                          {hasAnalysis ? (
-                            analysis?.status?.toLowerCase() === 'pending' || analysis?.status?.toLowerCase() === 'processing' ? (
-                              <div className="flex items-center gap-2">
-                                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                                <Badge variant="outline" className="text-xs">
-                                  {analysis?.status?.toLowerCase() === 'pending' ? 'Analysis Pending' : 'Processing...'}
-                                </Badge>
-                              </div>
-                            ) : analysis?.status?.toLowerCase() === 'completed' ? (
-                              <>
-                                <Badge variant="outline" className="text-xs">
-                                  Sentiment: {analysis?.sentiment_score}%
-                                </Badge>
-                                <Badge variant="outline" className="text-xs">
-                                  Engagement: {analysis?.engagement_score}%
-                                </Badge>
-                              </>
-                            ) : (
-                              <Badge variant="destructive" className="text-xs">
-                                Analysis Failed
+                          {isProcessing || (hasAnalysis && analysis?.status?.toLowerCase() === 'processing') ? (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                              <Badge variant="outline" className="text-xs bg-blue-50">
+                                Analyzing...
                               </Badge>
-                            )
+                            </div>
+                          ) : hasAnalysis && analysis?.status?.toLowerCase() === 'completed' ? (
+                            <>
+                              <Badge variant="outline" className="text-xs">
+                                Sentiment: {analysis?.sentiment_score}%
+                              </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                Engagement: {analysis?.engagement_score}%
+                              </Badge>
+                            </>
+                          ) : hasAnalysis && analysis?.status?.toLowerCase() === 'failed' ? (
+                            <Badge variant="destructive" className="text-xs">
+                              Analysis Failed
+                            </Badge>
+                          ) : hasAnalysis && analysis?.status?.toLowerCase() === 'pending' ? (
+                            <Badge variant="outline" className="text-xs">
+                              Ready for Analysis
+                            </Badge>
                           ) : (
                             <Badge variant="secondary" className="text-xs">
                               No Analysis
@@ -678,7 +892,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           View Analysis
                         </Button>
                       )}
-                      {!hasAnalysis && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
+                      {!isProcessing && (!hasAnalysis || analysis?.status?.toLowerCase() === 'pending' || analysis?.status?.toLowerCase() === 'failed') && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
                         <Button 
                           variant="outline" 
                           size="sm"
