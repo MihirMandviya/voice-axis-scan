@@ -119,7 +119,7 @@ interface Call {
   lead_id: string;
   employee_id: string;
   company_id?: string;
-  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered';
+  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered' | 'failed';
   notes: string;
   call_date: string;
   next_follow_up?: string;
@@ -1813,7 +1813,7 @@ export default function EmployeeDashboard() {
                                   View Analysis
                                 </Button>
                               )}
-                              {!hasAnalysis && (
+                              {!hasAnalysis && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
                                 <Button 
                                   variant="outline" 
                                   size="sm"
@@ -1824,15 +1824,17 @@ export default function EmployeeDashboard() {
                                   Get Analysis
                                 </Button>
                               )}
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => window.open(`/call/${call.id}`, '_blank')}
-                                className="gap-1"
-                              >
-                                <Eye className="h-4 w-4" />
-                                Details
-                              </Button>
+                              {call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => window.open(`/call/${call.id}`, '_blank')}
+                                  className="gap-1"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Details
+                                </Button>
+                              )}
                               <Button 
                                 variant="outline" 
                                 size="sm"

@@ -29,7 +29,7 @@ interface Call {
   lead_id: string;
   employee_id: string;
   company_id?: string;
-  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered';
+  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered' | 'failed';
   notes: string;
   call_date: string;
   next_follow_up?: string;
@@ -44,6 +44,10 @@ interface Call {
   employees?: {
     full_name: string;
     email: string;
+    manager_id?: string;
+    managers?: {
+      full_name: string;
+    };
   };
 }
 
@@ -173,11 +177,15 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
             ),
             employees (
               full_name,
-              email
+              email,
+              manager_id,
+              managers:manager_id (
+                full_name
+              )
             )
           `)
           .eq('company_id', userRole.company_id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false});
 
         if (callsResultError) {
           console.error('Calls error:', callsResultError);
@@ -564,6 +572,11 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                             <User className="h-3 w-3 mr-1" />
                             {call.employees?.full_name || 'Unknown Employee'}
                           </Badge>
+                          {!managerId && call.employees?.managers?.full_name && (
+                            <Badge variant="secondary" className="text-xs">
+                              Manager: {call.employees.managers.full_name}
+                            </Badge>
+                          )}
                           {call.outcome === 'not_answered' && (
                             <Badge variant="destructive" className="text-xs">Not Answered</Badge>
                           )}
@@ -579,12 +592,21 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                             <Calendar className="h-3 w-3" />
                             {new Date(call.created_at).toLocaleDateString()}
                           </p>
-                          <Badge variant={
-                            call.outcome === 'converted' ? 'default' : 
-                            call.outcome === 'interested' ? 'default' :
-                            call.outcome === 'follow_up' ? 'secondary' :
-                            'destructive'
-                          } className="text-xs">
+                          <Badge 
+                            variant={
+                              call.outcome === 'completed' ? 'default' :
+                              call.outcome === 'converted' ? 'default' : 
+                              call.outcome === 'interested' ? 'default' :
+                              call.outcome === 'follow_up' ? 'secondary' :
+                              'destructive'
+                            } 
+                            className={`text-xs ${
+                              call.outcome === 'completed' ? 'bg-green-500 hover:bg-green-600 text-white' :
+                              call.outcome === 'converted' ? 'bg-green-600 hover:bg-green-700 text-white' :
+                              call.outcome === 'interested' ? 'bg-blue-500 hover:bg-blue-600 text-white' :
+                              ''
+                            }`}
+                          >
                             {call.outcome.replace('_', ' ').toUpperCase()}
                           </Badge>
                           
@@ -634,15 +656,17 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleViewCallDetails(call.id)}
-                        className="gap-1"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Details
-                      </Button>
+                      {call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleViewCallDetails(call.id)}
+                          className="gap-1"
+                        >
+                          <Eye className="h-4 w-4" />
+                          Details
+                        </Button>
+                      )}
                       {hasAnalysis && analysis?.status?.toLowerCase() === 'completed' && (
                         <Button 
                           variant="outline" 
@@ -654,7 +678,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           View Analysis
                         </Button>
                       )}
-                      {!hasAnalysis && (
+                      {!hasAnalysis && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
                         <Button 
                           variant="outline" 
                           size="sm"
