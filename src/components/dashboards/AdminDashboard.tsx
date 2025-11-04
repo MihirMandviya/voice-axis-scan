@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import CallHistoryManager from "@/components/CallHistoryManager";
+import AdminReportsPage from "@/components/AdminReportsPage";
 import { 
   Building, 
   Users, 
@@ -49,7 +50,8 @@ import {
   History,
   BarChart3,
   Clock,
-  Upload
+  Upload,
+  FileText
 } from "lucide-react";
 
 interface User {
@@ -1273,6 +1275,14 @@ export default function AdminDashboard() {
               Performance
             </Button>
             <Button 
+              variant={activeSidebarItem === 'reports' ? 'accent' : 'ghost'} 
+              className="w-full justify-start"
+              onClick={() => setActiveSidebarItem('reports')}
+            >
+              <FileText className="h-4 w-4" />
+              Reports
+            </Button>
+            <Button 
               variant={activeSidebarItem === 'settings' ? 'accent' : 'ghost'} 
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('settings')}
@@ -2280,6 +2290,10 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+          )}
+
+          {activeSidebarItem === 'reports' && (
+            <AdminReportsPage />
           )}
 
           {activeSidebarItem === 'settings' && (

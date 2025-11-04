@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import CallHistoryManager from "@/components/CallHistoryManager";
 import ManagerProfilePage from "@/components/ManagerProfilePage";
+import ManagerReportsPage from "@/components/ManagerReportsPage";
 import { 
   Users, 
   UserPlus, 
@@ -35,7 +36,8 @@ import {
   Upload,
   Play,
   Download,
-  History
+  History,
+  FileText
 } from "lucide-react";
 
 interface Employee {
@@ -648,6 +650,14 @@ export default function ManagerDashboard() {
               Call History
             </Button>
             <Button 
+              variant={selectedTab === "reports" ? "accent" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setSelectedTab("reports")}
+            >
+              <FileText className="h-4 w-4" />
+              Reports
+            </Button>
+            <Button 
               variant={selectedTab === "profile" ? "accent" : "ghost"} 
               className="w-full justify-start"
               onClick={() => setSelectedTab("profile")}
@@ -1222,6 +1232,10 @@ export default function ManagerDashboard() {
                 companyId={userRole?.company_id || ''} 
                 managerId={manager?.id} 
               />
+            </TabsContent>
+
+            <TabsContent value="reports" className="space-y-6">
+              <ManagerReportsPage />
             </TabsContent>
 
             <TabsContent value="profile" className="space-y-6">

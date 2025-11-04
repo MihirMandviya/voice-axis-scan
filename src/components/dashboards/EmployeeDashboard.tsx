@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import EmployeeProfilePage from "@/components/EmployeeProfilePage";
+import EmployeeReportsPage from "@/components/EmployeeReportsPage";
+import PhoneDialer from "@/components/PhoneDialer";
 
 const WEBHOOK_URL = "https://n8nautomation.site/webhook/a2025371-8955-4ef4-8a74-0686456b3003";
 
@@ -96,7 +98,8 @@ import {
   Check,
   Loader2,
   RefreshCw,
-  Trash2
+  Trash2,
+  FileText
 } from "lucide-react";
 
 interface Lead {
@@ -191,6 +194,7 @@ export default function EmployeeDashboard() {
   const [isRemoveLeadModalOpen, setIsRemoveLeadModalOpen] = useState(false);
   const [selectedLeadToRemove, setSelectedLeadToRemove] = useState<Lead | null>(null);
   const [removalReason, setRemovalReason] = useState("");
+  const [isDialerModalOpen, setIsDialerModalOpen] = useState(false);
 
   useEffect(() => {
     if (userRole && company) {
@@ -893,24 +897,15 @@ export default function EmployeeDashboard() {
     try {
       console.log('📞 Saving call to database with data:', callData);
       
-      // First get the employee record to get the correct employee ID
-      const { data: employeeData, error: employeeError } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', userRole.user_id)
-        .single();
-
-      if (employeeError || !employeeData) {
-        console.error('Employee not found:', employeeError);
-        return;
-      }
-
+      // Note: employee_id in call_history references employees.user_id (not employees.id)
+      // So we use userRole.user_id directly
+      
       // Save to the new call_history table with complete Exotel response
       const callHistoryData = {
         lead_id: selectedLead.id,
-        employee_id: employeeData.id,
+        employee_id: userRole.user_id, // Fixed: Use userRole.user_id
         company_id: userRole.company_id,
-        outcome: 'follow_up', // Default outcome, can be updated later
+        outcome: 'completed', // Mark as completed since call was answered
         notes: 'Call completed via Exotel',
         exotel_response: callData, // Store complete Exotel response as JSONB
         exotel_call_sid: callData.Sid,
@@ -935,12 +930,17 @@ export default function EmployeeDashboard() {
 
       if (historyError) throw historyError;
 
+      console.log('✅ Call saved to history successfully');
+
+      // Refresh data to show the new call in history
+      fetchData();
+
       // Also save to call_outcomes table for backward compatibility
       const callOutcomeData = {
         lead_id: selectedLead.id,
-        employee_id: employeeData.id,
+        employee_id: userRole.user_id, // Fixed: Use userRole.user_id
         company_id: userRole.company_id,
-        outcome: 'follow_up', // Default outcome, can be updated later
+        outcome: 'completed', // Mark as completed since call was answered
         notes: 'Call completed via Exotel',
         exotel_call_sid: callData.Sid,
         exotel_from_number: callData.From,
@@ -1231,6 +1231,14 @@ export default function EmployeeDashboard() {
               Performance
             </Button>
             <Button 
+              variant={selectedTab === "reports" ? "accent" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setSelectedTab("reports")}
+            >
+              <FileText className="h-4 w-4" />
+              Reports
+            </Button>
+            <Button 
               variant={selectedTab === "profile" ? "accent" : "ghost"} 
               className="w-full justify-start"
               onClick={() => setSelectedTab("profile")}
@@ -1478,6 +1486,15 @@ export default function EmployeeDashboard() {
                   <p className="text-muted-foreground">Manage your assigned leads</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button 
+                    variant="default" 
+                    size="sm"
+                    onClick={() => setIsDialerModalOpen(true)}
+                    className="gap-2 bg-green-600 hover:bg-green-700"
+                  >
+                    <PhoneCall className="h-4 w-4" />
+                    Dial Number
+                  </Button>
                   <Button 
                     variant="outline" 
                     size="sm"
@@ -1907,6 +1924,10 @@ export default function EmployeeDashboard() {
               </div>
             </TabsContent>
 
+            <TabsContent value="reports" className="space-y-6">
+              <EmployeeReportsPage />
+            </TabsContent>
+
             <TabsContent value="profile" className="space-y-6">
               <EmployeeProfilePage onBack={() => setSelectedTab("overview")} />
             </TabsContent>
@@ -2142,6 +2163,25 @@ export default function EmployeeDashboard() {
               )}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Phone Dialer Modal */}
+      <Dialog open={isDialerModalOpen} onOpenChange={setIsDialerModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PhoneCall className="h-5 w-5 text-green-600" />
+              Phone Dialer
+            </DialogTitle>
+            <DialogDescription>
+              Dial a number to make a call
+            </DialogDescription>
+          </DialogHeader>
+          <PhoneDialer onCallComplete={() => {
+            fetchData(true);
+            setIsDialerModalOpen(false);
+          }} />
         </DialogContent>
       </Dialog>
 
