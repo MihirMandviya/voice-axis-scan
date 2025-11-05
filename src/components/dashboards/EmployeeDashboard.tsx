@@ -99,7 +99,8 @@ import {
   Loader2,
   RefreshCw,
   Trash2,
-  FileText
+  FileText,
+  Clock
 } from "lucide-react";
 
 interface Lead {
@@ -123,9 +124,12 @@ interface Call {
   notes: string;
   call_date: string;
   next_follow_up?: string;
+  auto_call_followup?: boolean;
+  call_details?: any;
   created_at: string;
   exotel_recording_url?: string;
   exotel_call_sid?: string;
+  exotel_response?: any;
   leads?: {
     name: string;
     email: string;
@@ -173,6 +177,9 @@ export default function EmployeeDashboard() {
   const [callOutcome, setCallOutcome] = useState("");
   const [callOutcomeStatus, setCallOutcomeStatus] = useState<'follow_up' | 'completed' | 'not_interested'>('follow_up');
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
+  const [autoCallFollowup, setAutoCallFollowup] = useState(false);
+  const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
+  const [selectedCallDetails, setSelectedCallDetails] = useState<Call | null>(null);
   const [nextFollowUpTime, setNextFollowUpTime] = useState("");
   const [analysisFileName, setAnalysisFileName] = useState("");
   
@@ -1855,7 +1862,8 @@ export default function EmployeeDashboard() {
                                 )}
                             </div>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex flex-col items-end space-y-2">
+                            <div className="flex items-center space-x-2">
                               <Badge variant="secondary">
                                 {lead.status}
                               </Badge>
@@ -1871,29 +1879,64 @@ export default function EmployeeDashboard() {
                             </Button>
                               )}
                               
-                              {/* Show remove button for all leads */}
+                              {/* Show remove button (moves lead to removed_leads) */}
                               <Button 
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleRemoveLead(lead)}
-                                className="gap-1 text-orange-600 hover:text-orange-700"
+                                className="gap-1 text-red-600 hover:text-red-700"
                               >
                                 <Trash2 className="h-4 w-4" />
-                                Remove
+                                {selectedLeadsSection === 'followup' ? 'Remove Lead' : 'Remove'}
                               </Button>
-                              
-                              {/* Show delete button for follow-up leads */}
-                              {selectedLeadsSection === 'followup' && (
-                                <Button 
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteFollowUp(lead.id)}
-                                  className="gap-1 text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                  Delete
-                                </Button>
-                              )}
+                            </div>
+                            
+                            {/* Auto-call toggle for follow-up leads */}
+                            {selectedLeadsSection === 'followup' && latestCallRecord && (
+                              <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-md">
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={latestCallRecord.auto_call_followup || false}
+                                    onChange={async (e) => {
+                                      const newValue = e.target.checked;
+                                      try {
+                                        const { error } = await supabase
+                                          .from('call_history')
+                                          .update({ auto_call_followup: newValue })
+                                          .eq('id', latestCallRecord.id);
+                                        
+                                        if (error) throw error;
+                                        
+                                        // Update local state
+                                        setCalls(prev => prev.map(c => 
+                                          c.id === latestCallRecord.id 
+                                            ? { ...c, auto_call_followup: newValue }
+                                            : c
+                                        ));
+                                        
+                                        toast({
+                                          title: newValue ? 'Auto-call enabled' : 'Auto-call disabled',
+                                          description: newValue 
+                                            ? 'Call will be triggered automatically at scheduled time' 
+                                            : 'Automatic calling has been disabled',
+                                        });
+                                      } catch (error: any) {
+                                        console.error('Error updating auto-call:', error);
+                                        toast({
+                                          title: 'Error',
+                                          description: 'Failed to update auto-call setting',
+                                          variant: 'destructive',
+                                        });
+                                      }
+                                    }}
+                                    className="w-4 h-4"
+                                  />
+                                  <Clock className="h-4 w-4 text-blue-600" />
+                                  <span className="font-medium text-blue-700">Auto-call at scheduled time</span>
+                                </label>
+                              </div>
+                            )}
                           </div>
                         </div>
                         );
@@ -1951,6 +1994,12 @@ export default function EmployeeDashboard() {
                                   Call with {call.leads?.name || 'Lead'}
                                   {call.outcome === 'not_answered' && (
                                     <Badge variant="destructive" className="text-xs">Not Answered</Badge>
+                                  )}
+                                  {(call.next_follow_up || call.outcome === 'follow_up') && (
+                                    <Badge variant="outline" className="text-xs bg-orange-50 border-orange-300 text-orange-700">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Follow-up Scheduled
+                                    </Badge>
                                   )}
                                 </h4>
                                 <p className="text-sm text-muted-foreground">
@@ -2724,6 +2773,135 @@ export default function EmployeeDashboard() {
             fetchData(true);
             setIsDialerModalOpen(false);
           }} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Call Details Modal */}
+      <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          {selectedCallDetails && (
+            <div className="space-y-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <PhoneCall className="h-5 w-5 text-blue-600" />
+                  Call Details
+                </DialogTitle>
+              </DialogHeader>
+              
+              {/* Lead Information */}
+              <div className="border rounded-lg p-4 space-y-2">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Lead Information
+                </h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Name:</span>
+                    <span className="ml-2 font-medium">{selectedCallDetails.leads?.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Email:</span>
+                    <span className="ml-2 font-medium">{selectedCallDetails.leads?.email}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Contact:</span>
+                    <span className="ml-2 font-medium">{selectedCallDetails.leads?.contact}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Call Date:</span>
+                    <span className="ml-2 font-medium">{new Date(selectedCallDetails.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Call Outcome */}
+              <div className="border rounded-lg p-4 space-y-2">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <PhoneCall className="h-4 w-4" />
+                  Call Outcome
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge className={
+                      selectedCallDetails.outcome === 'completed' ? 'bg-green-500' :
+                      selectedCallDetails.outcome === 'follow_up' ? 'bg-orange-500' :
+                      'bg-gray-500'
+                    }>
+                      {selectedCallDetails.outcome.replace('_', ' ').toUpperCase()}
+                    </Badge>
+                    {selectedCallDetails.auto_call_followup && selectedCallDetails.outcome === 'follow_up' && (
+                      <Badge variant="outline" className="bg-blue-50">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Auto-call enabled
+                      </Badge>
+                    )}
+                  </div>
+                  {selectedCallDetails.notes && (
+                    <div>
+                      <span className="text-muted-foreground">Notes:</span>
+                      <p className="mt-1 text-sm bg-muted p-2 rounded">{selectedCallDetails.notes}</p>
+                    </div>
+                  )}
+                  {selectedCallDetails.next_follow_up && (
+                    <div>
+                      <span className="text-muted-foreground">Next Follow-up:</span>
+                      <span className="ml-2 font-medium">{new Date(selectedCallDetails.next_follow_up).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Exotel Response */}
+              {selectedCallDetails.exotel_response && (
+                <div className="border rounded-lg p-4 space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    Call Technical Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Call SID:</span>
+                      <span className="ml-2 font-mono text-xs">{selectedCallDetails.exotel_call_sid}</span>
+                    </div>
+                    {selectedCallDetails.exotel_recording_url && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Recording:</span>
+                        <a 
+                          href={selectedCallDetails.exotel_recording_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="ml-2 text-blue-600 hover:underline text-sm"
+                        >
+                          Listen to recording
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Form Data */}
+              {selectedCallDetails.call_details && (
+                <div className="border rounded-lg p-4 space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Form Data
+                  </h3>
+                  <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                    {JSON.stringify(selectedCallDetails.call_details, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              <Button 
+                onClick={() => setIsCallDetailsModalOpen(false)}
+                className="w-full"
+              >
+                Close
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -82,7 +82,9 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
+  const [selectedManager, setSelectedManager] = useState<string>("all");
   const [selectedOutcome, setSelectedOutcome] = useState<string>("all");
+  const [selectedAnalysisStatus, setSelectedAnalysisStatus] = useState<string>("all");
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [recordingUrl, setRecordingUrl] = useState("");
@@ -607,47 +609,109 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
 
     const matchesEmployee = selectedEmployee === "all" || call.employee_id === selectedEmployee;
     
-    // Map outcome values to the new filter options
+    // Manager filter: employees.manager_id is the manager's primary key (id), not user_id
+    const matchesManager = selectedManager === "all" || call.employees?.manager_id === selectedManager;
+    
+    // Debug logging for manager filter
+    if (selectedManager !== "all" && call.employees) {
+      console.log('Manager Filter Debug:', {
+        selectedManager,
+        callManagerId: call.employees.manager_id,
+        matches: matchesManager,
+        employeeName: call.employees.full_name
+      });
+    }
+    
+    // Outcome filter - exact match
     let matchesOutcome = selectedOutcome === "all";
-    if (selectedOutcome === "completed") {
-      matchesOutcome = call.outcome === 'converted' || call.outcome === 'interested';
-    } else if (selectedOutcome === "follow_up") {
-      matchesOutcome = call.outcome === 'follow_up';
-    } else if (selectedOutcome === "not_interested") {
-      matchesOutcome = call.outcome === 'not_interested' || call.outcome === 'lost';
+    if (selectedOutcome !== "all") {
+      matchesOutcome = call.outcome === selectedOutcome;
+      
+      // Debug logging for outcome filter
+      if (call.id === calls[0]?.id && selectedOutcome !== "all") {
+        console.log('Outcome Filter Debug (first call):', {
+          selectedOutcome,
+          callOutcome: call.outcome,
+          matches: matchesOutcome
+        });
+      }
     }
 
-    return matchesSearch && matchesEmployee && matchesOutcome;
+    // Analysis status filter
+    const analysis = analyses.find(a => a.call_id === call.id);
+    let matchesAnalysisStatus = selectedAnalysisStatus === "all";
+    if (selectedAnalysisStatus === "analyzed") {
+      matchesAnalysisStatus = analysis && analysis.status?.toLowerCase() === 'completed';
+    } else if (selectedAnalysisStatus === "not_analyzed") {
+      // Only show answered calls (completed/converted) that are not analyzed
+      // Exclude not_answered and failed calls
+      const isAnsweredCall = call.outcome !== 'not_answered' && call.outcome !== 'failed';
+      const hasNoCompletedAnalysis = !analysis || analysis.status?.toLowerCase() !== 'completed';
+      matchesAnalysisStatus = isAnsweredCall && hasNoCompletedAnalysis;
+    }
+
+    return matchesSearch && matchesEmployee && matchesManager && matchesOutcome && matchesAnalysisStatus;
   });
 
 
-  // Get all employees under this manager for filter
+  // Get all employees and managers for filters
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
+  const [allManagers, setAllManagers] = useState<any[]>([]);
   
-  // Fetch all employees under this manager
+  // Fetch all employees and managers for filters
   useEffect(() => {
-    const fetchAllEmployees = async () => {
-      if (!managerId) return;
+    const fetchFilterData = async () => {
+      if (!userRole?.company_id) return;
       
       try {
-        const { data: employeesData, error: employeesError } = await supabase
-          .from('employees')
-          .select('id, user_id, full_name, email')
-          .eq('manager_id', managerId)
-          .eq('is_active', true);
+        if (managerId) {
+          // For manager view: fetch only their employees
+          const { data: employeesData, error: employeesError } = await supabase
+            .from('employees')
+            .select('id, user_id, full_name, email, manager_id')
+            .eq('manager_id', managerId)
+            .eq('is_active', true);
 
-        if (employeesError) {
-          console.error('Error fetching all employees:', employeesError);
+          if (employeesError) {
+            console.error('Error fetching employees:', employeesError);
+          } else {
+            setAllEmployees(employeesData || []);
+          }
         } else {
-          setAllEmployees(employeesData || []);
+          // For admin view: fetch all employees and managers in the company
+          const { data: employeesData, error: employeesError } = await supabase
+            .from('employees')
+            .select('id, user_id, full_name, email, manager_id')
+            .eq('company_id', userRole.company_id)
+            .eq('is_active', true);
+
+          const { data: managersData, error: managersError } = await supabase
+            .from('managers')
+            .select('id, user_id, full_name, email')
+            .eq('company_id', userRole.company_id)
+            .eq('is_active', true);
+
+          if (employeesError) {
+            console.error('Error fetching employees:', employeesError);
+          } else {
+            console.log('Fetched employees for filter:', employeesData);
+            setAllEmployees(employeesData || []);
+          }
+
+          if (managersError) {
+            console.error('Error fetching managers:', managersError);
+          } else {
+            console.log('Fetched managers for filter:', managersData);
+            setAllManagers(managersData || []);
+          }
         }
       } catch (error) {
-        console.error('Error fetching all employees:', error);
+        console.error('Error fetching filter data:', error);
       }
     };
 
-    fetchAllEmployees();
-  }, [managerId]);
+    fetchFilterData();
+  }, [managerId, userRole?.company_id]);
 
   // Use all employees for filter, not just those who made calls
   // Use user_id as the id since employee_id in call_history is the user_id
@@ -655,6 +719,17 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     id: emp.user_id,
     name: emp.full_name || 'Unknown Employee'
   }));
+
+  // Use manager.id (not user_id) because employees.manager_id references managers.id
+  const managers = allManagers.map(mgr => ({
+    id: mgr.id,
+    name: mgr.full_name || 'Unknown Manager'
+  }));
+
+  // Debug: Log managers for dropdown
+  if (managers.length > 0 && !managerId) {
+    console.log('Managers for dropdown:', managers);
+  }
 
   if (loading) {
     return (
@@ -695,12 +770,12 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Search */}
-            <div className="relative">
+            <div className="relative lg:col-span-3">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search calls..."
+                placeholder="Search calls by lead name, email, employee, or notes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -721,6 +796,22 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
               ))}
             </select>
 
+            {/* Manager Filter - Only show for admin */}
+            {!managerId && managers.length > 0 && (
+              <select
+                value={selectedManager}
+                onChange={(e) => setSelectedManager(e.target.value)}
+                className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+              >
+                <option value="all">All Managers</option>
+                {managers.map(manager => (
+                  <option key={manager.id} value={manager.id}>
+                    {manager.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
             {/* Outcome Filter */}
             <select
               value={selectedOutcome}
@@ -729,13 +820,24 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
             >
               <option value="all">All Outcomes</option>
               <option value="completed">Completed</option>
-              <option value="follow_up">Follow-ups</option>
+              <option value="follow_up">Follow-up</option>
               <option value="not_interested">Not Interested</option>
             </select>
 
+            {/* Analysis Status Filter */}
+            <select
+              value={selectedAnalysisStatus}
+              onChange={(e) => setSelectedAnalysisStatus(e.target.value)}
+              className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+            >
+              <option value="all">All Call Types</option>
+              <option value="analyzed">Analyzed</option>
+              <option value="not_analyzed">Not Analyzed</option>
+            </select>
+
             {/* Results Count */}
-            <div className="flex items-center text-sm text-muted-foreground">
-              {filteredCalls.length} call{filteredCalls.length !== 1 ? 's' : ''} found
+            <div className="flex items-center justify-center text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
+              <strong className="mr-1">{filteredCalls.length}</strong> call{filteredCalls.length !== 1 ? 's' : ''} found
             </div>
           </div>
         </CardContent>
@@ -791,6 +893,12 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           )}
                           {call.outcome === 'not_answered' && (
                             <Badge variant="destructive" className="text-xs">Not Answered</Badge>
+                          )}
+                          {(call.next_follow_up || call.outcome === 'follow_up') && (
+                            <Badge variant="outline" className="text-xs bg-orange-50 border-orange-300 text-orange-700">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Follow-up Scheduled
+                            </Badge>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">
