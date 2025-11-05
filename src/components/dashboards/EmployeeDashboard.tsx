@@ -2051,73 +2051,419 @@ export default function EmployeeDashboard() {
             <TabsContent value="analytics" className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold">Performance Analytics</h2>
-                <p className="text-muted-foreground">Your call performance and insights</p>
+                <p className="text-muted-foreground">Your call performance and comprehensive insights</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Call Performance Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Call Performance</CardTitle>
-                    <CardDescription>Your call statistics</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Total Calls</span>
-                        <span className="text-2xl font-bold">{calls.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Completed Calls</span>
-                        <span className="text-2xl font-bold text-green-600">
-                          {calls.filter(c => c.outcome === 'converted' || c.outcome === 'interested').length}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Success Rate</span>
-                        <span className="text-2xl font-bold text-blue-600">
-                          {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'converted' || c.outcome === 'interested').length / calls.length) * 100) : 0}%
-                        </span>
-                      </div>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Total Calls</p>
+                      <p className="text-3xl font-bold">{calls.length}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Completed</p>
+                      <p className="text-3xl font-bold text-green-600">
+                        {calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {calls.length > 0 ? 
+                          `${Math.round((calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100)}%` 
+                          : '0%'}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Analysis Insights</CardTitle>
-                    <CardDescription>Your call analysis results</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {analyses.length > 0 ? (
-                        <>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Avg Sentiment</span>
-                            <span className="text-2xl font-bold text-green-600">
-                              {Math.round(analyses.reduce((acc, a) => acc + a.sentiment_score, 0) / analyses.length)}%
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Avg Engagement</span>
-                            <span className="text-2xl font-bold text-blue-600">
-                              {Math.round(analyses.reduce((acc, a) => acc + a.engagement_score, 0) / analyses.length)}%
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Analyses</span>
-                            <span className="text-2xl font-bold">{analyses.length}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-center py-4">
-                          <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-muted-foreground">No analysis data yet</p>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Follow-up</p>
+                      <p className="text-3xl font-bold text-orange-600">
+                        {calls.filter(c => c.outcome === 'follow_up').length}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {calls.length > 0 ? 
+                          `${Math.round((calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100)}%` 
+                          : '0%'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Not Answered</p>
+                      <p className="text-3xl font-bold text-red-600">
+                        {calls.filter(c => c.outcome === 'not_answered').length}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {calls.length > 0 ? 
+                          `${Math.round((calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100)}%` 
+                          : '0%'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Analysis Quality Metrics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Call Quality Analysis</CardTitle>
+                  <CardDescription>
+                    {(() => {
+                      const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
+                      return completedAnalyses.length > 0 
+                        ? `Based on ${completedAnalyses.length} analyzed call${completedAnalyses.length > 1 ? 's' : ''}`
+                        : 'No completed analyses yet';
+                    })()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
+                    
+                    if (completedAnalyses.length === 0) {
+                      return (
+                        <div className="text-center py-8">
+                          <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                          <p className="text-muted-foreground">No analysis data available</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Complete a call and click "Get Analysis" to see insights
+                          </p>
                         </div>
-                      )}
+                      );
+                    }
+
+                    const avgSentiment = completedAnalyses.length > 0
+                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length)
+                      : 0;
+                    
+                    const avgEngagement = completedAnalyses.length > 0
+                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length)
+                      : 0;
+                    
+                    const avgConfidenceExec = completedAnalyses.length > 0
+                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.confidence_score_executive) || 0), 0) / completedAnalyses.length)
+                      : 0;
+                    
+                    const avgConfidencePerson = completedAnalyses.length > 0
+                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.confidence_score_person) || 0), 0) / completedAnalyses.length)
+                      : 0;
+
+                    const avgConfidence = Math.round((avgConfidenceExec + avgConfidencePerson) / 2);
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                          <div className="text-3xl font-bold text-blue-700 mb-1">{avgSentiment}%</div>
+                          <p className="text-sm text-blue-600 font-medium">Avg Sentiment</p>
+                          <p className="text-xs text-blue-500 mt-1">
+                            {avgSentiment >= 70 ? '😊 Excellent' : avgSentiment >= 50 ? '😐 Good' : '😟 Needs Improvement'}
+                          </p>
+                        </div>
+                        
+                        <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+                          <div className="text-3xl font-bold text-green-700 mb-1">{avgEngagement}%</div>
+                          <p className="text-sm text-green-600 font-medium">Avg Engagement</p>
+                          <p className="text-xs text-green-500 mt-1">
+                            {avgEngagement >= 70 ? '🔥 High' : avgEngagement >= 50 ? '👍 Moderate' : '📉 Low'}
+                          </p>
+                        </div>
+                        
+                        <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                          <div className="text-3xl font-bold text-purple-700 mb-1">{avgConfidence}/10</div>
+                          <p className="text-sm text-purple-600 font-medium">Avg Confidence</p>
+                          <p className="text-xs text-purple-500 mt-1">
+                            {avgConfidence >= 7 ? '💪 Strong' : avgConfidence >= 5 ? '✓ Good' : '📚 Practice More'}
+                          </p>
+                        </div>
+                        
+                        <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200">
+                          <div className="text-3xl font-bold text-orange-700 mb-1">{completedAnalyses.length}</div>
+                          <p className="text-sm text-orange-600 font-medium">Analyzed Calls</p>
+                          <p className="text-xs text-orange-500 mt-1">
+                            {calls.length > 0 ? `${Math.round((completedAnalyses.length / calls.length) * 100)}% of total` : '0% of total'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
+              {/* Call Outcome Breakdown */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Call Outcome Breakdown</CardTitle>
+                  <CardDescription>Distribution of your call results</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {calls.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium">Completed/Converted</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">
+                              {calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length}
+                            </span>
+                            <Badge variant="outline" className="bg-green-50 text-green-700">
+                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100) : 0}%
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-green-600 h-2 rounded-full" 
+                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100 : 0}%`}}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-orange-600" />
+                            <span className="text-sm font-medium">Follow-up Required</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">
+                              {calls.filter(c => c.outcome === 'follow_up').length}
+                            </span>
+                            <Badge variant="outline" className="bg-orange-50 text-orange-700">
+                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100) : 0}%
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-orange-600 h-2 rounded-full" 
+                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100 : 0}%`}}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Star className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm font-medium">Interested</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">
+                              {calls.filter(c => c.outcome === 'interested').length}
+                            </span>
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'interested').length / calls.length) * 100) : 0}%
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full" 
+                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'interested').length / calls.length) * 100 : 0}%`}}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <XCircle className="h-4 w-4 text-gray-600" />
+                            <span className="text-sm font-medium">Not Interested</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">
+                              {calls.filter(c => c.outcome === 'not_interested').length}
+                            </span>
+                            <Badge variant="outline" className="bg-gray-50 text-gray-700">
+                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'not_interested').length / calls.length) * 100) : 0}%
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-gray-600 h-2 rounded-full" 
+                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'not_interested').length / calls.length) * 100 : 0}%`}}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-red-600" />
+                            <span className="text-sm font-medium">Not Answered</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">
+                              {calls.filter(c => c.outcome === 'not_answered').length}
+                            </span>
+                            <Badge variant="outline" className="bg-red-50 text-red-700">
+                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100) : 0}%
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-red-600 h-2 rounded-full" 
+                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100 : 0}%`}}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-muted-foreground">No calls made yet</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Start making calls to see your performance breakdown
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Performance Insights */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance Insights & Tips</CardTitle>
+                  <CardDescription>Personalized recommendations based on your data</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
+                    const insights = [];
+
+                    if (calls.length === 0) {
+                      insights.push({
+                        icon: <PhoneCall className="h-5 w-5 text-blue-600" />,
+                        title: 'Get Started',
+                        message: 'Start making calls to build your performance history and receive personalized insights.',
+                        type: 'info'
+                      });
+                    } else {
+                      // Completion rate insight
+                      const completionRate = Math.round((calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100);
+                      if (completionRate < 30) {
+                        insights.push({
+                          icon: <TrendingUp className="h-5 w-5 text-orange-600" />,
+                          title: 'Improve Completion Rate',
+                          message: `Your completion rate is ${completionRate}%. Try to focus on closing more calls successfully. Consider analyzing successful calls to identify patterns.`,
+                          type: 'warning'
+                        });
+                      } else if (completionRate >= 60) {
+                        insights.push({
+                          icon: <CheckCircle className="h-5 w-5 text-green-600" />,
+                          title: 'Great Completion Rate!',
+                          message: `Excellent work! You're completing ${completionRate}% of your calls. Keep up the great work!`,
+                          type: 'success'
+                        });
+                      }
+
+                      // Not answered insight
+                      const notAnsweredRate = Math.round((calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100);
+                      if (notAnsweredRate > 40) {
+                        insights.push({
+                          icon: <AlertTriangle className="h-5 w-5 text-red-600" />,
+                          title: 'High Not Answered Rate',
+                          message: `${notAnsweredRate}% of your calls aren't being answered. Try calling at different times or consider multiple follow-up attempts.`,
+                          type: 'error'
+                        });
+                      }
+
+                      // Analysis insight
+                      if (completedAnalyses.length === 0 && calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length > 0) {
+                        insights.push({
+                          icon: <BarChart3 className="h-5 w-5 text-purple-600" />,
+                          title: 'Get Call Analysis',
+                          message: 'You have completed calls! Click "Get Analysis" on your calls to receive detailed insights on sentiment, engagement, and areas for improvement.',
+                          type: 'info'
+                        });
+                      }
+
+                      // Quality scores insight
+                      if (completedAnalyses.length > 0) {
+                        const avgSentiment = Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length);
+                        const avgEngagement = Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length);
+                        
+                        if (avgSentiment < 50 || avgEngagement < 50) {
+                          insights.push({
+                            icon: <Star className="h-5 w-5 text-yellow-600" />,
+                            title: 'Improve Call Quality',
+                            message: 'Your sentiment or engagement scores could be higher. Focus on active listening, empathy, and maintaining an enthusiastic tone.',
+                            type: 'warning'
+                          });
+                        } else if (avgSentiment >= 70 && avgEngagement >= 70) {
+                          insights.push({
+                            icon: <Star className="h-5 w-5 text-yellow-600" />,
+                            title: 'Excellent Call Quality!',
+                            message: 'Your sentiment and engagement scores are excellent! You\'re doing a great job connecting with leads.',
+                            type: 'success'
+                          });
+                        }
+                      }
+
+                      // Follow-up insight
+                      const followUpCount = calls.filter(c => c.outcome === 'follow_up').length;
+                      if (followUpCount > 0) {
+                        insights.push({
+                          icon: <Calendar className="h-5 w-5 text-blue-600" />,
+                          title: 'Follow-ups Pending',
+                          message: `You have ${followUpCount} lead${followUpCount > 1 ? 's' : ''} requiring follow-up. Stay organized and follow up on time to increase conversion rates.`,
+                          type: 'info'
+                        });
+                      }
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {insights.length > 0 ? (
+                          insights.map((insight, index) => (
+                            <div 
+                              key={index}
+                              className={`flex gap-3 p-4 rounded-lg border ${
+                                insight.type === 'success' ? 'bg-green-50 border-green-200' :
+                                insight.type === 'warning' ? 'bg-orange-50 border-orange-200' :
+                                insight.type === 'error' ? 'bg-red-50 border-red-200' :
+                                'bg-blue-50 border-blue-200'
+                              }`}
+                            >
+                              <div className="flex-shrink-0 mt-0.5">
+                                {insight.icon}
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-sm mb-1">{insight.title}</h4>
+                                <p className="text-sm text-muted-foreground">{insight.message}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8">
+                            <Star className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                            <p className="text-muted-foreground">Looking good!</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Keep up the great work and continue making quality calls
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6">
