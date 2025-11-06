@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,7 +101,9 @@ import {
   RefreshCw,
   Trash2,
   FileText,
-  Clock
+  Clock,
+  Users,
+  Building
 } from "lucide-react";
 
 interface Lead {
@@ -113,6 +116,7 @@ interface Lead {
   assigned_to?: string;
   created_at: string;
   description?: string;
+  group_id?: string;
 }
 
 interface Call {
@@ -163,12 +167,21 @@ export default function EmployeeDashboard() {
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Lead[]>([]);
   const [completedLeads, setCompletedLeads] = useState<Lead[]>([]);
+  const [leadGroups, setLeadGroups] = useState<any[]>([]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLeadsSection, setSelectedLeadsSection] = useState<'all' | 'followup' | 'completed'>('all');
+  const [leadsSection, setLeadsSection] = useState<'leads' | 'groups'>('leads');
+  const [isViewingGroupPage, setIsViewingGroupPage] = useState(false);
+  const [selectedLeadGroup, setSelectedLeadGroup] = useState<any>(null);
   const [completedLeadIds, setCompletedLeadIds] = useState<Set<string>>(new Set());
+  const [callOutcomeFilter, setCallOutcomeFilter] = useState<string>('all');
+  const [callDateFilter, setCallDateFilter] = useState<string>('all');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [aiInsights, setAiInsights] = useState<Array<{title: string, message: string, type: 'success' | 'warning' | 'info' | 'error'}>>([]);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [lastInsightsFetch, setLastInsightsFetch] = useState<Date | null>(null);
   const [isCallModalOpen, setIsCallModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -177,6 +190,7 @@ export default function EmployeeDashboard() {
   const [callOutcome, setCallOutcome] = useState("");
   const [callOutcomeStatus, setCallOutcomeStatus] = useState<'follow_up' | 'completed' | 'not_interested'>('follow_up');
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [autoCallFollowup, setAutoCallFollowup] = useState(false);
   const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
   const [selectedCallDetails, setSelectedCallDetails] = useState<Call | null>(null);
@@ -281,6 +295,24 @@ export default function EmployeeDashboard() {
         setAllLeads(allLeadsArray);
         setFollowUpLeads(followUpLeadsArray);
         setCompletedLeads(completedLeadsArray);
+
+        // Fetch lead groups that have leads assigned to this employee
+        const leadGroupIds = [...new Set(leadsDataArray.map(lead => lead.group_id).filter(Boolean))];
+        if (leadGroupIds.length > 0) {
+          const { data: leadGroupsData, error: leadGroupsError } = await supabase
+            .from('lead_groups')
+            .select('*')
+            .in('id', leadGroupIds);
+
+          if (leadGroupsError) {
+            console.error('Lead groups error:', leadGroupsError);
+            setLeadGroups([]);
+          } else {
+            setLeadGroups(leadGroupsData || []);
+          }
+        } else {
+          setLeadGroups([]);
+        }
       }
 
       // Fetch calls made by this employee from call_history table
@@ -356,6 +388,221 @@ export default function EmployeeDashboard() {
       }
     }
   };
+
+  const fetchAIInsights = useCallback(async () => {
+    if (!userRole?.company_id || calls.length === 0) {
+      return;
+    }
+
+    setIsLoadingInsights(true);
+    try {
+      // Calculate performance stats
+      const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
+      const totalCalls = calls.length;
+      const completedCalls = calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length;
+      const followUpCalls = calls.filter(c => c.outcome === 'follow_up').length;
+      const notAnsweredCalls = calls.filter(c => c.outcome === 'not_answered').length;
+      const notInterestedCalls = calls.filter(c => c.outcome === 'not_interested').length;
+      
+      const completionRate = totalCalls > 0 ? Math.round((completedCalls / totalCalls) * 100) : 0;
+      const followUpRate = totalCalls > 0 ? Math.round((followUpCalls / totalCalls) * 100) : 0;
+      const notAnsweredRate = totalCalls > 0 ? Math.round((notAnsweredCalls / totalCalls) * 100) : 0;
+      
+      let avgSentiment = 0;
+      let avgEngagement = 0;
+      let avgConfidence = 0;
+      
+      if (completedAnalyses.length > 0) {
+        avgSentiment = Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length);
+        avgEngagement = Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length);
+        const avgConfidenceExec = completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.confidence_score_executive) || 0), 0) / completedAnalyses.length;
+        const avgConfidencePerson = completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.confidence_score_person) || 0), 0) / completedAnalyses.length;
+        avgConfidence = Math.round((avgConfidenceExec + avgConfidencePerson) / 2);
+      }
+
+      // Prepare stats data for Gemini
+      const statsData = {
+        totalCalls,
+        completedCalls,
+        followUpCalls,
+        notAnsweredCalls,
+        notInterestedCalls,
+        completionRate,
+        followUpRate,
+        notAnsweredRate,
+        avgSentiment,
+        avgEngagement,
+        avgConfidence,
+        analyzedCalls: completedAnalyses.length,
+        analysisRate: totalCalls > 0 ? Math.round((completedAnalyses.length / totalCalls) * 100) : 0
+      };
+
+      // System prompt for Gemini
+      const systemPrompt = `You are an expert sales performance coach and data analyst. Your role is to analyze call performance statistics and provide actionable, personalized insights and improvement tips for a sales employee.
+
+Guidelines:
+1. Provide 3-4 specific, actionable insights based on the performance data
+2. Each insight should have a clear title and detailed message
+3. Focus on areas that need improvement, but also acknowledge strengths
+4. Be constructive, encouraging, and specific in your recommendations
+5. Use the performance metrics to identify patterns and opportunities
+6. Format your response as a JSON array with objects containing: title, message, and type (one of: "success", "warning", "info", "error")
+7. Make insights practical and implementable
+
+Example format:
+[
+  {
+    "title": "High Completion Rate",
+    "message": "Your completion rate of 65% is excellent! This shows strong closing skills. To maintain this momentum, focus on maintaining consistent follow-up practices.",
+    "type": "success"
+  },
+  {
+    "title": "Improve Call Analysis Coverage",
+    "message": "Only 40% of your calls have been analyzed. Consider analyzing more calls to get deeper insights into your communication patterns and identify areas for improvement.",
+    "type": "warning"
+  }
+]`;
+
+      // User prompt with stats
+      const userPrompt = `Analyze the following call performance statistics and provide 3-4 actionable insights and improvement tips:
+
+Performance Statistics:
+- Total Calls: ${statsData.totalCalls}
+- Completed/Converted: ${statsData.completedCalls} (${statsData.completionRate}%)
+- Follow-up Required: ${statsData.followUpCalls} (${statsData.followUpRate}%)
+- Not Answered: ${statsData.notAnsweredCalls} (${statsData.notAnsweredRate}%)
+- Not Interested: ${statsData.notInterestedCalls}
+- Analyzed Calls: ${statsData.analyzedCalls} (${statsData.analysisRate}% of total)
+- Average Sentiment Score: ${statsData.avgSentiment}%
+- Average Engagement Score: ${statsData.avgEngagement}%
+- Average Confidence Score: ${statsData.avgConfidence}/10
+
+Please provide insights that are specific, actionable, and tailored to these metrics.`;
+
+      // Get Gemini API key from environment
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        console.error('API Key check:', {
+          VITE_GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY ? 'Found' : 'Not found',
+          GEMINI_API_KEY: import.meta.env.GEMINI_API_KEY ? 'Found' : 'Not found',
+          allEnvKeys: Object.keys(import.meta.env).filter(key => key.includes('GEMINI') || key.includes('gemini'))
+        });
+        throw new Error('Gemini API key not found in environment variables. Please set VITE_GEMINI_API_KEY in your .env file.');
+      }
+
+      // Initialize Google Generative AI
+      const genAI = new GoogleGenerativeAI(apiKey);
+
+      // Try different models in order of preference
+      const modelsToTry = [
+        'gemini-2.0-flash-exp',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-pro',
+      ];
+
+      let lastError: any = null;
+      let success = false;
+      
+      for (const modelName of modelsToTry) {
+        try {
+          console.log(`Trying Gemini model: ${modelName}`);
+          
+          // Get the model
+          const model = genAI.getGenerativeModel({ model: modelName });
+
+          // Prepare the prompt
+          const prompt = `${systemPrompt}\n\n${userPrompt}\n\nPlease respond with only a valid JSON array, no additional text.`;
+
+          // Generate content
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          const responseText = response.text();
+
+          if (!responseText) {
+            console.error('No text in Gemini response');
+            lastError = new Error('No response text from Gemini API');
+            continue; // Try next model
+          }
+          
+          // Parse JSON from response (handle markdown code blocks if present)
+          let insightsJson = responseText.trim();
+          if (insightsJson.startsWith('```json')) {
+            insightsJson = insightsJson.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+          } else if (insightsJson.startsWith('```')) {
+            insightsJson = insightsJson.replace(/```\n?/g, '');
+          }
+
+          let parsedInsights;
+          try {
+            parsedInsights = JSON.parse(insightsJson);
+          } catch (parseError) {
+            console.error('Failed to parse insights JSON:', insightsJson);
+            lastError = new Error('Failed to parse AI insights response. Please try again.');
+            continue; // Try next model
+          }
+          
+          // Validate and set insights
+          if (Array.isArray(parsedInsights) && parsedInsights.length > 0) {
+            const validInsights = parsedInsights
+              .filter(insight => insight.title && insight.message && insight.type)
+              .slice(0, 4); // Limit to 4 insights
+            setAiInsights(validInsights);
+            setLastInsightsFetch(new Date());
+            success = true;
+            console.log(`Successfully fetched insights using ${modelName}`);
+            break; // Success! Exit loop
+          } else {
+            lastError = new Error('Invalid insights format from API');
+            continue; // Try next model
+          }
+        } catch (error: any) {
+          console.error(`Error trying ${modelName}:`, error);
+          lastError = error;
+          // If it's a model not found error, try next model
+          if (error.message?.includes('not found') || error.message?.includes('404')) {
+            continue; // Try next model
+          }
+          // For other errors, we might want to retry or fail
+          continue; // Try next model
+        }
+      }
+
+      // If all models failed, throw the last error
+      if (!success && lastError) {
+        throw lastError;
+      }
+    } catch (error: any) {
+      console.error('Error fetching AI insights:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch AI insights. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  }, [userRole, calls, analyses, toast]);
+
+  // Auto-fetch insights every 24 hours (only if insights have been fetched before)
+  useEffect(() => {
+    if (!userRole?.company_id || calls.length === 0 || !lastInsightsFetch) return;
+
+    const shouldFetchInsights = () => {
+      const hoursSinceLastFetch = (new Date().getTime() - lastInsightsFetch.getTime()) / (1000 * 60 * 60);
+      return hoursSinceLastFetch >= 24;
+    };
+
+    // Set up interval to check every hour
+    const interval = setInterval(() => {
+      if (shouldFetchInsights()) {
+        fetchAIInsights();
+      }
+    }, 60 * 60 * 1000); // Check every hour
+
+    return () => clearInterval(interval);
+  }, [userRole, calls.length, lastInsightsFetch, fetchAIInsights]);
 
   const handleStartCall = (lead: Lead) => {
     setSelectedLead(lead);
@@ -1233,13 +1480,18 @@ export default function EmployeeDashboard() {
     setIsExotelCallModalOpen(false);
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
+    setIsSignOutDialogOpen(true);
+  };
+
+  const confirmSignOut = async () => {
     try {
       await signOut();
       toast({
         title: "Signed out successfully",
         description: "You have been logged out of your account.",
       });
+      setIsSignOutDialogOpen(false);
     } catch (error) {
       console.error('Sign out error:', error);
       toast({
@@ -1247,6 +1499,7 @@ export default function EmployeeDashboard() {
         description: "There was an error signing you out. Please try again.",
         variant: "destructive",
       });
+      setIsSignOutDialogOpen(false);
     }
   };
 
@@ -1362,28 +1615,45 @@ export default function EmployeeDashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card px-6 py-4">
+      <header className="border-b bg-card px-6 py-4 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
               src="/logo.png" 
               alt="Tasknova" 
-              className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+              className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
               onError={(e) => {
                 e.currentTarget.src = "/logo2.png";
               }}
             />
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Employee Dashboard</h1>
-              <p className="text-muted-foreground">{company?.name}</p>
-              <p className="text-sm text-blue-600 font-medium">Welcome, {user?.user_metadata?.full_name || 'Employee'}!</p>
+            <div className="border-l-2 border-purple-500/30 pl-4">
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                  Employee Dashboard
+                  <Badge className="bg-gradient-to-r from-purple-500 to-purple-600 text-white border-none font-semibold px-2.5 py-0.5 text-xs shadow-md">
+                    <Users className="h-3 w-3 mr-1" />
+                    EMPLOYEE
+                  </Badge>
+                </h1>
+              </div>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-lg">👋</span>
+                  <span className="font-semibold text-foreground">{user?.user_metadata?.full_name || 'Employee'}</span>
+                </span>
+                <span className="text-purple-500">•</span>
+                <span className="flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-purple-500" />
+                  <span className="font-medium">{company?.name}</span>
+                </span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <Button 
               variant="outline"
               onClick={handleSignOut}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="flex items-center gap-2 font-medium border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all"
             >
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -1603,65 +1873,51 @@ export default function EmployeeDashboard() {
               <Card>
                 <CardHeader>
                   <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Your latest calls and analyses</CardDescription>
+                  <CardDescription>Your latest calls (most recent 3)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {calls.slice(0, 5).map((call) => {
+                    {calls.slice(0, 3).map((call) => {
+                      const lead = allLeads.find(l => l.id === call.lead_id);
                       const analysis = analyses.find(a => a.call_id === call.id);
-                      console.log('EmployeeDashboard - Recent Activity - Call:', call.id, 'Analysis found:', !!analysis, analysis);
+                      
                       return (
-                        <div key={call.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
                               <PhoneCall className="h-4 w-4 text-blue-600" />
-                            </div>
-                            <div>
-                              <p className="font-medium">Call completed</p>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(call.created_at).toLocaleDateString()}
+                              <p className="font-medium">
+                                Called {lead ? lead.name : 'Unknown Lead'}
                               </p>
-                              {analysis && (
-                                <div className="flex items-center gap-2 mt-1">
-                                  {analysis.status?.toLowerCase() === 'pending' || analysis.status?.toLowerCase() === 'processing' ? (
-                                    <div className="flex items-center gap-2">
-                                      <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                                      <Badge variant="outline" className="text-xs">
-                                        {analysis.status?.toLowerCase() === 'pending' ? 'Analysis Pending' : 'Processing...'}
-                                      </Badge>
-                                    </div>
-                                  ) : analysis.status?.toLowerCase() === 'completed' ? (
-                                    <>
-                                  <Badge variant="outline" className="text-xs">
-                                    Sentiment: {analysis.sentiment_score}%
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs">
-                                    Engagement: {analysis.engagement_score}%
-                                  </Badge>
-                                    </>
-                                  ) : (
-                                    <Badge variant="destructive" className="text-xs">
-                                      Analysis Failed
-                                    </Badge>
-                                  )}
-                                </div>
-                              )}
                             </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant={
-                              call.outcome === 'converted' ? 'default' : 
-                              call.outcome === 'interested' ? 'default' :
-                              call.outcome === 'follow_up' ? 'secondary' :
-                              'destructive'
-                            }>
-                              {call.outcome.replace('_', ' ').toUpperCase()}
-                            </Badge>
-                            {analysis && analysis.status?.toLowerCase() === 'completed' && (
-                              <Button variant="ghost" size="sm">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            )}
+                            <div className="space-y-1">
+                              <p className="text-sm text-muted-foreground">
+                                📞 {lead ? lead.contact : 'N/A'}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                🕐 {new Date(call.created_at).toLocaleString()}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <Badge variant={
+                                  call.outcome === 'completed' || call.outcome === 'converted' ? 'default' : 
+                                  call.outcome === 'follow_up' ? 'secondary' :
+                                  call.outcome === 'not_interested' ? 'destructive' :
+                                  'outline'
+                                } className="text-xs">
+                                  {call.outcome.replace('_', ' ').toUpperCase()}
+                                </Badge>
+                                {analysis && analysis.status?.toLowerCase() === 'completed' && (
+                                  <>
+                                    <Badge variant="outline" className="text-xs">
+                                      Sentiment: {analysis.sentiment_score}%
+                                    </Badge>
+                                    <Badge variant="outline" className="text-xs">
+                                      Engagement: {analysis.engagement_score}%
+                                    </Badge>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1705,6 +1961,14 @@ export default function EmployeeDashboard() {
                 </div>
               </div>
 
+              {/* Tabs for Leads and Lead Groups */}
+              <Tabs value={leadsSection} onValueChange={(value) => setLeadsSection(value as 'leads' | 'groups')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="leads">My Leads</TabsTrigger>
+                  <TabsTrigger value="groups">Lead Groups</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="leads" className="space-y-6">
               {/* Section Tabs */}
               <div className="flex space-x-1 bg-muted p-1 rounded-lg">
                 <Button
@@ -1945,8 +2209,175 @@ export default function EmployeeDashboard() {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
+                </TabsContent>
 
+                {/* Lead Groups Section */}
+                <TabsContent value="groups" className="space-y-6">
+                  {isViewingGroupPage && selectedLeadGroup ? (
+                    // Full Page View for Lead Group
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Button variant="ghost" onClick={() => setIsViewingGroupPage(false)} className="mb-2">
+                            ← Back to Groups
+                          </Button>
+                          <h2 className="text-2xl font-bold">{selectedLeadGroup.group_name}</h2>
+                          <p className="text-muted-foreground">View and call your leads in this group</p>
+                        </div>
+                      </div>
+
+                      {/* Group Stats */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold">
+                              {allLeads.filter(lead => lead.group_id === selectedLeadGroup.id).length}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold text-green-600">
+                              {allLeads.filter(lead => lead.group_id === selectedLeadGroup.id && completedLeadIds.has(lead.id)).length}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Created</CardTitle>
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-sm font-medium">
+                              {new Date(selectedLeadGroup.created_at).toLocaleDateString()}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Leads List */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Leads in This Group</CardTitle>
+                          <CardDescription>Your assigned leads from this group</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {allLeads.filter(lead => lead.group_id === selectedLeadGroup.id).length === 0 ? (
+                            <div className="text-center py-8">
+                              <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                              <p className="text-muted-foreground">No leads assigned to you in this group</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {allLeads.filter(lead => lead.group_id === selectedLeadGroup.id).map((lead) => {
+                                const callRecords = calls.filter(call => call.lead_id === lead.id);
+                                const latestCallRecord = callRecords.sort((a, b) => 
+                                  new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                                )[0];
+                                const statusIndicator = getLeadStatusIndicator(lead);
+                                
+                                return (
+                                  <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                    <div className="flex items-center space-x-4 flex-1">
+                                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <Phone className="h-5 w-5 text-blue-500" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h4 className="font-medium">{lead.name}</h4>
+                                          {statusIndicator}
+                                        </div>
+                                        <p className="text-sm text-muted-foreground">{lead.email}</p>
+                                        <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                                        {latestCallRecord && latestCallRecord.next_follow_up && (
+                                          <p className="text-xs text-orange-600 mt-1">
+                                            Follow-up: {new Date(latestCallRecord.next_follow_up).toLocaleString()}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => {
+                                          setSelectedLead(lead);
+                                          setIsCallModalOpen(true);
+                                        }}
+                                        className="gap-2 bg-green-600 hover:bg-green-700"
+                                      >
+                                        <PhoneCall className="h-4 w-4" />
+                                        Call
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ) : (
+                    // List View of Groups
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Users className="h-5 w-5" />
+                          My Lead Groups
+                        </CardTitle>
+                        <CardDescription>
+                          View lead groups containing your assigned leads
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {leadGroups.length === 0 ? (
+                          <div className="text-center py-8">
+                            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                            <p className="text-muted-foreground">You don't have any leads in groups yet</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {leadGroups.map((group) => (
+                              <div key={group.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                <div>
+                                  <h3 className="font-medium">{group.group_name}</h3>
+                                  <p className="text-sm text-muted-foreground">
+                                    Created {new Date(group.created_at).toLocaleDateString()}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {allLeads.filter(lead => lead.group_id === group.id).length} leads assigned to you
+                                  </p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => {
+                                    setSelectedLeadGroup(group);
+                                    setIsViewingGroupPage(true);
+                                  }}>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    View Leads
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </TabsContent>
 
             <TabsContent value="calls" className="space-y-6">
               <div>
@@ -1954,22 +2385,118 @@ export default function EmployeeDashboard() {
                 <p className="text-muted-foreground">Your call records and outcomes</p>
               </div>
 
+              {/* Filters */}
               <Card>
                 <CardHeader>
-                  <CardTitle>All Calls ({calls.length})</CardTitle>
+                  <CardTitle>Filters</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Call Outcome</Label>
+                      <Select value={callOutcomeFilter} onValueChange={setCallOutcomeFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Outcomes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Outcomes</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="follow_up">Follow-up</SelectItem>
+                          <SelectItem value="not_interested">Not Interested</SelectItem>
+                          <SelectItem value="not_answered">Not Answered</SelectItem>
+                          <SelectItem value="converted">Converted</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Date Range</Label>
+                      <Select value={callDateFilter} onValueChange={setCallDateFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Time" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Time</SelectItem>
+                          <SelectItem value="today">Today</SelectItem>
+                          <SelectItem value="week">This Week</SelectItem>
+                          <SelectItem value="month">This Month</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    All Calls ({(() => {
+                      // Filter calls based on filters
+                      let filteredCalls = calls;
+
+                      // Filter by outcome
+                      if (callOutcomeFilter !== 'all') {
+                        filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
+                      }
+
+                      // Filter by date
+                      const now = new Date();
+                      if (callDateFilter === 'today') {
+                        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfDay);
+                      } else if (callDateFilter === 'week') {
+                        const startOfWeek = new Date(now);
+                        startOfWeek.setDate(now.getDate() - now.getDay());
+                        startOfWeek.setHours(0, 0, 0, 0);
+                        filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfWeek);
+                      } else if (callDateFilter === 'month') {
+                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                        filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfMonth);
+                      }
+
+                      return filteredCalls.length;
+                    })()})
+                  </CardTitle>
                   <CardDescription>
-                    Complete history of your calls
+                    {callOutcomeFilter !== 'all' || callDateFilter !== 'all' 
+                      ? 'Filtered call history' 
+                      : 'Complete history of your calls'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {calls.length === 0 ? (
-                    <div className="text-center py-8">
-                      <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No calls made yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {calls.map((call) => {
+                  {(() => {
+                    // Filter calls based on filters
+                    let filteredCalls = calls;
+
+                    // Filter by outcome
+                    if (callOutcomeFilter !== 'all') {
+                      filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
+                    }
+
+                    // Filter by date
+                    const now = new Date();
+                    if (callDateFilter === 'today') {
+                      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                      filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfDay);
+                    } else if (callDateFilter === 'week') {
+                      const startOfWeek = new Date(now);
+                      startOfWeek.setDate(now.getDate() - now.getDay());
+                      startOfWeek.setHours(0, 0, 0, 0);
+                      filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfWeek);
+                    } else if (callDateFilter === 'month') {
+                      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                      filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfMonth);
+                    }
+
+                    return filteredCalls.length === 0 ? (
+                      <div className="text-center py-8">
+                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">
+                          {calls.length === 0 ? 'No calls made yet' : 'No calls match the selected filters'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {filteredCalls.map((call) => {
                         // Find analysis for this call using call_id
                         const analysis = analyses.find(a => a.call_id === call.id);
                         const hasAnalysis = !!analysis;
@@ -2092,7 +2619,8 @@ export default function EmployeeDashboard() {
                         );
                       })}
                     </div>
-                  )}
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -2385,132 +2913,108 @@ export default function EmployeeDashboard() {
                 </CardContent>
               </Card>
 
-              {/* Performance Insights */}
+              {/* AI-Powered Performance Insights */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Performance Insights & Tips</CardTitle>
-                  <CardDescription>Personalized recommendations based on your data</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
+                        AI Performance Insights & Tips
+                      </CardTitle>
+                      <CardDescription>
+                        {lastInsightsFetch 
+                          ? `Last updated: ${new Date(lastInsightsFetch).toLocaleString()}`
+                          : 'Personalized AI-powered recommendations based on your performance data'}
+                      </CardDescription>
+                    </div>
+                    <Button 
+                      onClick={fetchAIInsights}
+                      disabled={isLoadingInsights || calls.length === 0}
+                      size="sm"
+                      className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+                    >
+                      {isLoadingInsights ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="font-medium">Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Star className="h-4 w-4 fill-yellow-300 text-yellow-300 animate-pulse" />
+                          <span className="font-medium">Get AI-Powered Insights</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  {(() => {
-                    const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
-                    const insights = [];
+                  {calls.length === 0 ? (
+                    <div className="text-center py-8">
+                      <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-muted-foreground">Start making calls to receive AI-powered insights</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Once you have call data, our AI will analyze your performance and provide personalized recommendations
+                      </p>
+                    </div>
+                  ) : isLoadingInsights ? (
+                    <div className="text-center py-8">
+                      <Loader2 className="h-12 w-12 text-blue-600 mx-auto mb-3 animate-spin" />
+                      <p className="text-muted-foreground">Analyzing your performance data...</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Generating personalized insights and improvement tips
+                      </p>
+                    </div>
+                  ) : aiInsights.length > 0 ? (
+                    <div className="space-y-4">
+                      {aiInsights.map((insight, index) => {
+                        const getIcon = () => {
+                          switch (insight.type) {
+                            case 'success':
+                              return <CheckCircle className="h-5 w-5 text-green-600" />;
+                            case 'warning':
+                              return <AlertTriangle className="h-5 w-5 text-orange-600" />;
+                            case 'error':
+                              return <XCircle className="h-5 w-5 text-red-600" />;
+                            default:
+                              return <BarChart3 className="h-5 w-5 text-blue-600" />;
+                          }
+                        };
 
-                    if (calls.length === 0) {
-                      insights.push({
-                        icon: <PhoneCall className="h-5 w-5 text-blue-600" />,
-                        title: 'Get Started',
-                        message: 'Start making calls to build your performance history and receive personalized insights.',
-                        type: 'info'
-                      });
-                    } else {
-                      // Completion rate insight
-                      const completionRate = Math.round((calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100);
-                      if (completionRate < 30) {
-                        insights.push({
-                          icon: <TrendingUp className="h-5 w-5 text-orange-600" />,
-                          title: 'Improve Completion Rate',
-                          message: `Your completion rate is ${completionRate}%. Try to focus on closing more calls successfully. Consider analyzing successful calls to identify patterns.`,
-                          type: 'warning'
-                        });
-                      } else if (completionRate >= 60) {
-                        insights.push({
-                          icon: <CheckCircle className="h-5 w-5 text-green-600" />,
-                          title: 'Great Completion Rate!',
-                          message: `Excellent work! You're completing ${completionRate}% of your calls. Keep up the great work!`,
-                          type: 'success'
-                        });
-                      }
-
-                      // Not answered insight
-                      const notAnsweredRate = Math.round((calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100);
-                      if (notAnsweredRate > 40) {
-                        insights.push({
-                          icon: <AlertTriangle className="h-5 w-5 text-red-600" />,
-                          title: 'High Not Answered Rate',
-                          message: `${notAnsweredRate}% of your calls aren't being answered. Try calling at different times or consider multiple follow-up attempts.`,
-                          type: 'error'
-                        });
-                      }
-
-                      // Analysis insight
-                      if (completedAnalyses.length === 0 && calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length > 0) {
-                        insights.push({
-                          icon: <BarChart3 className="h-5 w-5 text-purple-600" />,
-                          title: 'Get Call Analysis',
-                          message: 'You have completed calls! Click "Get Analysis" on your calls to receive detailed insights on sentiment, engagement, and areas for improvement.',
-                          type: 'info'
-                        });
-                      }
-
-                      // Quality scores insight
-                      if (completedAnalyses.length > 0) {
-                        const avgSentiment = Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length);
-                        const avgEngagement = Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length);
-                        
-                        if (avgSentiment < 50 || avgEngagement < 50) {
-                          insights.push({
-                            icon: <Star className="h-5 w-5 text-yellow-600" />,
-                            title: 'Improve Call Quality',
-                            message: 'Your sentiment or engagement scores could be higher. Focus on active listening, empathy, and maintaining an enthusiastic tone.',
-                            type: 'warning'
-                          });
-                        } else if (avgSentiment >= 70 && avgEngagement >= 70) {
-                          insights.push({
-                            icon: <Star className="h-5 w-5 text-yellow-600" />,
-                            title: 'Excellent Call Quality!',
-                            message: 'Your sentiment and engagement scores are excellent! You\'re doing a great job connecting with leads.',
-                            type: 'success'
-                          });
-                        }
-                      }
-
-                      // Follow-up insight
-                      const followUpCount = calls.filter(c => c.outcome === 'follow_up').length;
-                      if (followUpCount > 0) {
-                        insights.push({
-                          icon: <Calendar className="h-5 w-5 text-blue-600" />,
-                          title: 'Follow-ups Pending',
-                          message: `You have ${followUpCount} lead${followUpCount > 1 ? 's' : ''} requiring follow-up. Stay organized and follow up on time to increase conversion rates.`,
-                          type: 'info'
-                        });
-                      }
-                    }
-
-                    return (
-                      <div className="space-y-4">
-                        {insights.length > 0 ? (
-                          insights.map((insight, index) => (
-                            <div 
-                              key={index}
-                              className={`flex gap-3 p-4 rounded-lg border ${
-                                insight.type === 'success' ? 'bg-green-50 border-green-200' :
-                                insight.type === 'warning' ? 'bg-orange-50 border-orange-200' :
-                                insight.type === 'error' ? 'bg-red-50 border-red-200' :
-                                'bg-blue-50 border-blue-200'
-                              }`}
-                            >
-                              <div className="flex-shrink-0 mt-0.5">
-                                {insight.icon}
-                              </div>
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-sm mb-1">{insight.title}</h4>
-                                <p className="text-sm text-muted-foreground">{insight.message}</p>
-                              </div>
+                        return (
+                          <div 
+                            key={index}
+                            className={`flex gap-3 p-4 rounded-lg border ${
+                              insight.type === 'success' ? 'bg-green-50 border-green-200' :
+                              insight.type === 'warning' ? 'bg-orange-50 border-orange-200' :
+                              insight.type === 'error' ? 'bg-red-50 border-red-200' :
+                              'bg-blue-50 border-blue-200'
+                            }`}
+                          >
+                            <div className="flex-shrink-0 mt-0.5">
+                              {getIcon()}
                             </div>
-                          ))
-                        ) : (
-                          <div className="text-center py-8">
-                            <Star className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                            <p className="text-muted-foreground">Looking good!</p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              Keep up the great work and continue making quality calls
-                            </p>
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-sm mb-1">{insight.title}</h4>
+                              <p className="text-sm text-muted-foreground">{insight.message}</p>
+                            </div>
                           </div>
-                        )}
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 mb-4">
+                        <Star className="h-10 w-10 text-purple-600 fill-purple-600" />
                       </div>
-                    );
-                  })()}
+                      <h3 className="text-lg font-semibold text-foreground mb-2">
+                        Get AI-Powered Insights
+                      </h3>
+                      <p className="text-muted-foreground max-w-md mx-auto">
+                        Click the button above to analyze your performance data and receive personalized AI-powered recommendations and improvement tips.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -2959,6 +3463,40 @@ export default function EmployeeDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Sign Out Confirmation Dialog */}
+      <Dialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirm Sign Out
+            </DialogTitle>
+            <DialogDescription className="text-base pt-2">
+              Are you sure you want to sign out? You will need to log in again to access your dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSignOutDialogOpen(false)}
+              className="font-medium"
+            >
+              No, Stay
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmSignOut}
+              className="font-medium"
+            >
+              Yes, Sign Out
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

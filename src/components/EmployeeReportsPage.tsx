@@ -24,8 +24,10 @@ import {
 export default function EmployeeReportsPage() {
   const { userRole } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+  const [timePeriod, setTimePeriod] = useState<'daily' | 'monthly' | 'custom'>('monthly');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customFromDate, setCustomFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customToDate, setCustomToDate] = useState(new Date().toISOString().split('T')[0]);
   const [performanceData, setPerformanceData] = useState<any>(null);
   const [callsBreakdown, setCallsBreakdown] = useState<any[]>([]);
 
@@ -33,22 +35,30 @@ export default function EmployeeReportsPage() {
     if (userRole?.user_id) {
       fetchReportData();
     }
-  }, [userRole, timePeriod, selectedDate]);
+  }, [userRole, timePeriod, selectedDate, customFromDate, customToDate]);
 
   const getDateRange = () => {
-    const date = new Date(selectedDate);
     let startDate: Date;
-    let endDate = new Date(date);
-    endDate.setHours(23, 59, 59, 999);
+    let endDate: Date;
 
-    if (timePeriod === 'daily') {
+    if (timePeriod === 'custom') {
+      // Use custom date range
+      startDate = new Date(customFromDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(customToDate);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (timePeriod === 'daily') {
+      // Single day
+      const date = new Date(selectedDate);
       startDate = new Date(date);
       startDate.setHours(0, 0, 0, 0);
-    } else if (timePeriod === 'weekly') {
-      startDate = new Date(date);
-      startDate.setDate(date.getDate() - 7);
-      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
     } else {
+      // Monthly - last 30 days
+      const date = new Date(selectedDate);
+      endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
       startDate = new Date(date);
       startDate.setDate(date.getDate() - 30);
       startDate.setHours(0, 0, 0, 0);
@@ -287,21 +297,49 @@ export default function EmployeeReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly (Last 7 days)</SelectItem>
                   <SelectItem value="monthly">Monthly (Last 30 days)</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">End Date</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                max={new Date().toISOString().split('T')[0]}
-              />
-            </div>
+            {timePeriod === 'custom' ? (
+              <>
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">From Date</label>
+                  <input
+                    type="date"
+                    value={customFromDate}
+                    onChange={(e) => setCustomFromDate(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    max={customToDate}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">To Date</label>
+                  <input
+                    type="date"
+                    value={customToDate}
+                    onChange={(e) => setCustomToDate(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    min={customFromDate}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex-1">
+                <label className="text-sm font-medium mb-2 block">
+                  {timePeriod === 'daily' ? 'Select Date' : 'End Date (Last 30 days)'}
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -333,7 +371,7 @@ export default function EmployeeReportsPage() {
       </Card>
 
       {/* Call Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
@@ -341,6 +379,7 @@ export default function EmployeeReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{performanceData?.total_calls || 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">All calls made</p>
           </CardContent>
         </Card>
 
@@ -351,6 +390,18 @@ export default function EmployeeReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{performanceData?.completed_calls || 0}</div>
+            <p className="text-xs text-green-600 mt-1">Successful</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Not Answered</CardTitle>
+            <XCircle className="h-4 w-4 text-gray-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-600">{performanceData?.not_answered_calls || 0}</div>
+            <p className="text-xs text-gray-600 mt-1">Missed calls</p>
           </CardContent>
         </Card>
 
@@ -361,6 +412,7 @@ export default function EmployeeReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">{performanceData?.follow_up_calls || 0}</div>
+            <p className="text-xs text-orange-600 mt-1">Need retry</p>
           </CardContent>
         </Card>
 
@@ -371,6 +423,7 @@ export default function EmployeeReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{performanceData?.not_interested_calls || 0}</div>
+            <p className="text-xs text-red-600 mt-1">Rejected</p>
           </CardContent>
         </Card>
       </div>

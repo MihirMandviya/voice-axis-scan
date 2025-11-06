@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Upload, BarChart3, Users, Zap, Shield, ArrowRight } from "lucide-react";
+import { CheckCircle, Phone, BarChart3, Users, Zap, Shield, ArrowRight, UserCog, Layers } from "lucide-react";
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -13,39 +13,44 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
 
   const features = [
     {
-      icon: Upload,
-      title: "Easy Upload",
-      description: "Upload call recordings directly from Google Drive with one click"
+      icon: Users,
+      title: "Lead Management",
+      description: "Organize and manage your leads efficiently with groups, assignments, and tracking"
+    },
+    {
+      icon: Phone,
+      title: "Integrated Calling",
+      description: "Make calls directly from the platform with automatic recording and analysis"
     },
     {
       icon: BarChart3,
-      title: "AI Analysis",
+      title: "AI-Powered Analysis",
       description: "Advanced sentiment, engagement, and objection analysis powered by AI"
     },
     {
-      icon: Users,
-      title: "Team Insights",
-      description: "Track performance across your entire sales team with detailed metrics"
+      icon: Layers,
+      title: "3-Tier Hierarchy",
+      description: "Admin, Manager, and Employee roles with customized dashboards and permissions"
     },
     {
       icon: Zap,
-      title: "Real-time Processing",
-      description: "Get analysis results in under 5 minutes with automated pipeline"
+      title: "End-to-End Automation",
+      description: "Complete workflow from lead assignment to call analysis and reporting"
     },
     {
       icon: Shield,
-      title: "Secure & Private",
-      description: "Enterprise-grade security with encrypted storage and access controls"
+      title: "Comprehensive Reports",
+      description: "Detailed performance reports, analytics, and insights at every level"
     }
   ];
 
   const benefits = [
-    "Automate call quality monitoring",
-    "Identify conversion levers and roadblocks",
-    "Track sentiment and engagement trends",
-    "Reduce manual review time by 90%",
-    "Improve team performance with data insights",
-    "Searchable transcript analysis"
+    "Complete lead-to-analysis workflow automation",
+    "Hierarchical team management (Admin, Manager, Employee)",
+    "Integrated calling with automatic recording",
+    "Real-time AI-powered call analysis and insights",
+    "Comprehensive performance tracking and reports",
+    "Role-based dashboards and permissions"
   ];
 
   return (
@@ -93,31 +98,60 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
               <div className="flex items-center mb-6">
-                <Badge className="bg-accent-blue/10 text-accent-blue border-accent-blue/20">
-                  AI-Powered Call Analysis
+                <Badge className="bg-accent-blue/10 text-accent-blue border-accent-blue/20 text-sm px-4 py-1">
+                  🚀 The Future of Sales Management
                 </Badge>
               </div>
               <h1 className="text-5xl font-bold leading-tight mb-6">
                 <span className="text-accent-blue">Tasknova</span>
                 <br />
-                Transform Your Call Performance with 
-                <span className="text-accent-blue"> AI Insights</span>
+                Your Complete Sales 
+                <br />
+                <span className="bg-gradient-to-r from-accent-blue to-purple-600 bg-clip-text text-transparent">
+                  Command Center
+                </span>
               </h1>
-              <p className="text-xl text-gray-700 mb-8 leading-relaxed">
-                Upload call recordings from Google Drive and get detailed analysis reports 
-                with sentiment scoring, engagement metrics, and actionable insights to boost your team's performance.
+              <p className="text-xl text-gray-700 mb-6 leading-relaxed">
+                Manage leads, make intelligent calls, and get AI-powered insights—all in one powerful platform. 
+                Built for modern teams with <span className="font-semibold text-accent-blue">Admin, Manager & Employee</span> roles.
               </p>
-              <div className="flex justify-start">
+              <div className="flex flex-wrap gap-4 mb-8">
+                <div className="flex items-center gap-2 bg-white/80 px-4 py-2 rounded-full shadow-sm">
+                  <CheckCircle className="h-5 w-5 text-success" />
+                  <span className="text-sm font-medium">Lead Management</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/80 px-4 py-2 rounded-full shadow-sm">
+                  <CheckCircle className="h-5 w-5 text-success" />
+                  <span className="text-sm font-medium">Integrated Calling</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/80 px-4 py-2 rounded-full shadow-sm">
+                  <CheckCircle className="h-5 w-5 text-success" />
+                  <span className="text-sm font-medium">AI Analysis</span>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4 justify-start">
                 <Button 
                   size="xl" 
                   variant="accent" 
                   onClick={onGetStarted}
-                  className="bg-accent-blue text-white hover:bg-accent-blue/90 shadow-lg"
+                  className="bg-accent-blue text-white hover:bg-accent-blue/90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
                 >
-                  Get Started Free
+                  Start Free Trial
                   <ArrowRight className="h-5 w-5" />
                 </Button>
+                <Button 
+                  size="xl" 
+                  variant="outline" 
+                  onClick={onLogin}
+                  className="border-2 border-accent-blue text-accent-blue hover:bg-accent-blue/5"
+                >
+                  Watch Demo
+                  <Zap className="h-5 w-5" />
+                </Button>
               </div>
+              <p className="text-sm text-gray-600 mt-4">
+                ✨ No credit card required • 14-day free trial • Setup in 5 minutes
+              </p>
             </div>
             
             <div className="relative">
@@ -233,13 +267,126 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
         </div>
       </section>
 
+      {/* 3-Tier System Section */}
+      <section className="px-6 py-16 bg-gradient-to-b from-white to-gray-50">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-12">
+            <Badge className="bg-purple-100 text-purple-700 border-purple-200 mb-4">
+              ⚡ Hierarchical Power
+            </Badge>
+            <h2 className="text-4xl font-bold mb-4">
+              Built for Your <span className="text-transparent bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text">Entire Organization</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Seamless collaboration with role-based permissions and customized dashboards for every team member
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <Card className="border-2 border-blue-200 bg-blue-50/50 hover:shadow-lg transition-all">
+              <CardHeader>
+                <div className="h-14 w-14 bg-blue-500 rounded-full flex items-center justify-center mb-3 mx-auto">
+                  <Shield className="h-7 w-7 text-white" />
+                </div>
+                <CardTitle className="text-2xl text-center">Admin</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Complete system oversight and control</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Team and manager management</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Organization-wide reports and analytics</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>System configuration and settings</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 border-green-200 bg-green-50/50 hover:shadow-lg transition-all">
+              <CardHeader>
+                <div className="h-14 w-14 bg-green-500 rounded-full flex items-center justify-center mb-3 mx-auto">
+                  <UserCog className="h-7 w-7 text-white" />
+                </div>
+                <CardTitle className="text-2xl text-center">Manager</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Manage and assign leads to employees</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Monitor team performance and calls</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Review analysis and reports</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Track conversion metrics</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 border-purple-200 bg-purple-50/50 hover:shadow-lg transition-all">
+              <CardHeader>
+                <div className="h-14 w-14 bg-purple-500 rounded-full flex items-center justify-center mb-3 mx-auto">
+                  <Users className="h-7 w-7 text-white" />
+                </div>
+                <CardTitle className="text-2xl text-center">Employee</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Access assigned leads and groups</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Make calls directly from platform</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>View call analysis and feedback</span>
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-purple-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Track personal performance</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
-      <section className="px-6 py-20">
+      <section className="px-6 py-20 bg-white">
         <div className="mx-auto max-w-6xl">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-6">Powerful Features for Sales Teams</h2>
+            <Badge className="bg-green-100 text-green-700 border-green-200 mb-4">
+              🎯 Everything You Need
+            </Badge>
+            <h2 className="text-4xl font-bold mb-6">
+              <span className="text-transparent bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text">
+                Powerful Features
+              </span> That Drive Results
+            </h2>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Everything you need to analyze, understand, and improve your call performance
+              From lead capture to AI-powered insights—every tool you need to dominate your market
             </p>
           </div>
           
@@ -264,12 +411,17 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
       </section>
 
       {/* Industries Section */}
-      <section className="px-6 py-20">
+      <section className="px-6 py-20 bg-gradient-to-b from-gray-50 to-white">
         <div className="mx-auto max-w-6xl">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-6">Industries That Trust Our Solution</h2>
+            <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 mb-4">
+              🏢 Trusted Across Industries
+            </Badge>
+            <h2 className="text-4xl font-bold mb-6">
+              Built for <span className="text-transparent bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text">Every Industry</span>
+            </h2>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              From HR agencies to banking institutions, businesses across industries rely on our AI-powered call analysis
+              From startups to enterprises—businesses across all sectors trust our complete lead-to-analysis platform
             </p>
           </div>
           
@@ -283,7 +435,7 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-base leading-relaxed">
-                  Streamline candidate interviews and improve hiring decisions with detailed conversation analysis and candidate assessment insights.
+                  Manage candidates as leads, conduct calls directly from the platform, and get detailed conversation analysis for better hiring decisions.
                 </CardDescription>
               </CardContent>
             </Card>
@@ -291,13 +443,13 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
             <Card className="border-2 hover:border-accent-blue transition-all duration-300 hover:shadow-lg group">
               <CardHeader>
                 <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <Upload className="h-6 w-6 text-white" />
+                  <Phone className="h-6 w-6 text-white" />
                 </div>
                 <CardTitle className="text-xl">Real Estate</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-base leading-relaxed">
-                  Enhance client consultations, property showings, and negotiations with sentiment analysis and engagement tracking.
+                  Manage property leads, conduct client calls directly from the platform, and track engagement with automated analysis.
                 </CardDescription>
               </CardContent>
             </Card>
@@ -311,7 +463,7 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-base leading-relaxed">
-                  Monitor support call quality, identify customer pain points, and improve resolution rates with AI-driven insights.
+                  Manage support tickets as leads, handle calls through the platform, and automatically analyze customer interactions for quality assurance.
                 </CardDescription>
               </CardContent>
             </Card>
@@ -321,11 +473,11 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
                 <div className="h-12 w-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                   <Zap className="h-6 w-6 text-white" />
                 </div>
-                <CardTitle className="text-xl">Lead Qualification</CardTitle>
+                <CardTitle className="text-xl">Lead Qualification & Sales</CardTitle>
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-base leading-relaxed">
-                  Optimize sales conversations, identify qualified prospects, and improve conversion rates with detailed call analytics.
+                  Manage leads end-to-end: organize, assign, call, and analyze. Track conversion rates with complete workflow automation.
                 </CardDescription>
               </CardContent>
             </Card>
@@ -362,13 +514,18 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
       </section>
 
       {/* Benefits Section */}
-      <section className="bg-secondary px-6 py-20">
+      <section className="bg-gradient-to-br from-blue-50 to-purple-50 px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-4xl font-bold mb-6">Why Choose Our Platform?</h2>
+              <Badge className="bg-orange-100 text-orange-700 border-orange-200 mb-4">
+                💎 Premium Experience
+              </Badge>
+              <h2 className="text-4xl font-bold mb-6">
+                Why Teams <span className="text-transparent bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text">Love Tasknova</span>
+              </h2>
               <p className="text-xl text-muted-foreground mb-8">
-                Join hundreds of sales teams who have transformed their call performance with our AI-powered insights.
+                Join hundreds of high-performing teams who've revolutionized their sales with our intelligent platform.
               </p>
               <div className="space-y-4">
                 {benefits.map((benefit, index) => (
@@ -381,21 +538,25 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
             </div>
             
             <div className="grid grid-cols-2 gap-6">
-              <Card className="text-center p-6">
-                <div className="text-3xl font-bold text-accent-blue mb-2">90%</div>
-                <div className="text-muted-foreground">Time Savings</div>
+              <Card className="text-center p-6 border-2 border-blue-200 hover:border-blue-400 transition-all hover:shadow-xl">
+                <div className="text-4xl font-bold text-accent-blue mb-2">90%</div>
+                <div className="text-sm text-muted-foreground font-medium">Time Savings</div>
+                <div className="text-xs text-gray-500 mt-1">vs manual review</div>
               </Card>
-              <Card className="text-center p-6">
-                <div className="text-3xl font-bold text-success mb-2">34%</div>
-                <div className="text-muted-foreground">Conversion Boost</div>
+              <Card className="text-center p-6 border-2 border-green-200 hover:border-green-400 transition-all hover:shadow-xl">
+                <div className="text-4xl font-bold text-success mb-2">3.2x</div>
+                <div className="text-sm text-muted-foreground font-medium">Conversion Rate</div>
+                <div className="text-xs text-gray-500 mt-1">average increase</div>
               </Card>
-              <Card className="text-center p-6">
-                <div className="text-3xl font-bold text-warning mb-2">5 Min</div>
-                <div className="text-muted-foreground">Analysis Time</div>
+              <Card className="text-center p-6 border-2 border-orange-200 hover:border-orange-400 transition-all hover:shadow-xl">
+                <div className="text-4xl font-bold text-warning mb-2">&lt;5m</div>
+                <div className="text-sm text-muted-foreground font-medium">Analysis Time</div>
+                <div className="text-xs text-gray-500 mt-1">instant insights</div>
               </Card>
-              <Card className="text-center p-6">
-                <div className="text-3xl font-bold text-primary mb-2">500+</div>
-                <div className="text-muted-foreground">Happy Teams</div>
+              <Card className="text-center p-6 border-2 border-purple-200 hover:border-purple-400 transition-all hover:shadow-xl">
+                <div className="text-4xl font-bold text-purple-600 mb-2">500+</div>
+                <div className="text-sm text-muted-foreground font-medium">Active Teams</div>
+                <div className="text-xs text-gray-500 mt-1">growing daily</div>
               </Card>
             </div>
           </div>
@@ -403,21 +564,58 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
       </section>
 
       {/* CTA Section */}
-      <section className="px-6 py-20">
-        <div className="mx-auto max-w-4xl text-center">
-          <h2 className="text-4xl font-bold mb-6">Ready to Transform Your Calls?</h2>
-          <p className="text-xl text-muted-foreground mb-8">
-            Start analyzing your call recordings today and unlock insights that drive results.
+      <section className="relative px-6 py-24 bg-gradient-to-br from-accent-blue via-blue-600 to-purple-600 text-white overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+        </div>
+        
+        <div className="relative mx-auto max-w-4xl text-center">
+          <Badge className="bg-white/20 text-white border-white/30 mb-6 backdrop-blur-sm">
+            🎉 Join 500+ Teams Already Winning
+          </Badge>
+          <h2 className="text-5xl font-bold mb-6 leading-tight">
+            Ready to <span className="text-yellow-300">10x</span> Your Sales Game?
+          </h2>
+          <p className="text-xl text-blue-100 mb-10 max-w-2xl mx-auto leading-relaxed">
+            Start managing leads, making intelligent calls, and getting AI-powered insights in minutes. 
+            No complex setup, no credit card required.
           </p>
-          <div className="flex justify-center">
-            <Button size="xl" variant="accent" onClick={onGetStarted}>
-              Start Free Trial
-              <ArrowRight className="h-5 w-5" />
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+            <Button 
+              size="xl" 
+              variant="secondary"
+              onClick={onGetStarted}
+              className="bg-white text-accent-blue hover:bg-gray-100 shadow-2xl hover:scale-105 transition-all text-lg px-8 py-6"
+            >
+              Start Free Trial Today
+              <ArrowRight className="h-6 w-6 ml-2" />
+            </Button>
+            <Button 
+              size="xl" 
+              variant="outline"
+              onClick={onLogin}
+              className="border-2 border-white text-white hover:bg-white/10 text-lg px-8 py-6"
+            >
+              Schedule Demo
+              <Zap className="h-6 w-6 ml-2" />
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground mt-6">
-            No credit card required • 14-day free trial • Cancel anytime
-          </p>
+          <div className="flex items-center justify-center gap-6 text-sm text-blue-100">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-300" />
+              <span>No credit card</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-300" />
+              <span>14-day free trial</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-300" />
+              <span>Cancel anytime</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -437,7 +635,7 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
               />
               <div>
                 <p className="font-semibold text-foreground">Tasknova</p>
-                <p className="text-sm text-muted-foreground">AI-Powered Call Analysis</p>
+                <p className="text-sm text-muted-foreground">Complete Lead Management & AI Analysis Platform</p>
               </div>
             </div>
             <div className="text-center md:text-right">

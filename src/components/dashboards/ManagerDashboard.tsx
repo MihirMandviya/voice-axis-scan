@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -37,7 +38,11 @@ import {
   Play,
   Download,
   History,
-  FileText
+  FileText,
+  UserCog,
+  Building,
+  AlertTriangle,
+  Calendar
 } from "lucide-react";
 
 interface Employee {
@@ -94,16 +99,29 @@ export default function ManagerDashboard() {
   const [selectedTab, setSelectedTab] = useState("overview");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadGroups, setLeadGroups] = useState<any[]>([]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [manager, setManager] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [leadsSection, setLeadsSection] = useState<'leads' | 'groups'>('leads');
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
   const [isEditLeadModalOpen, setIsEditLeadModalOpen] = useState(false);
   const [isAssignLeadModalOpen, setIsAssignLeadModalOpen] = useState(false);
+  const [isAddLeadGroupModalOpen, setIsAddLeadGroupModalOpen] = useState(false);
+  const [isViewLeadGroupModalOpen, setIsViewLeadGroupModalOpen] = useState(false);
+  const [isViewingGroupPage, setIsViewingGroupPage] = useState(false);
+  const [selectedLeadGroup, setSelectedLeadGroup] = useState<any>(null);
+  const [isDeleteLeadModalOpen, setIsDeleteLeadModalOpen] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<any>(null);
+  const [newLeadGroup, setNewLeadGroup] = useState({
+    groupName: "",
+    description: "",
+  });
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [createdEmployeeCredentials, setCreatedEmployeeCredentials] = useState<{email: string, password: string, fullName: string} | null>(null);
@@ -125,6 +143,7 @@ export default function ManagerDashboard() {
     company: "",
     description: "",
     assignedTo: "",
+    groupId: "",
   });
 
   useEffect(() => {
@@ -221,6 +240,20 @@ export default function ManagerDashboard() {
       setLeads([]);
       } else {
         setLeads(leadsData || []);
+      }
+
+      // Fetch lead groups assigned to this manager
+      const { data: leadGroupsData, error: leadGroupsError } = await supabase
+        .from('lead_groups')
+        .select('*')
+        .eq('assigned_to', managerData.id)
+        .eq('company_id', userRole.company_id);
+
+      if (leadGroupsError) {
+        console.error('Lead groups error:', leadGroupsError);
+        setLeadGroups([]);
+      } else {
+        setLeadGroups(leadGroupsData || []);
       }
 
       // Fetch call outcomes made by employees under this manager
@@ -371,17 +404,37 @@ export default function ManagerDashboard() {
     if (!userRole?.company_id) return;
 
     try {
+      // Determine assignment logic
+      let assignedUserId = null;
+      let assignedTo = null;
+
+      if (newLead.groupId && newLead.groupId !== 'none') {
+        // If group is selected, inherit assignment from group's existing leads
+        const groupLeads = leads.filter(lead => lead.group_id === newLead.groupId);
+        if (groupLeads.length > 0 && groupLeads[0].assigned_to) {
+          assignedUserId = groupLeads[0].user_id;
+          assignedTo = groupLeads[0].assigned_to;
+        }
+      } else {
+        // Direct employee assignment
+        if (newLead.assignedTo && newLead.assignedTo !== 'unassigned') {
+          assignedUserId = newLead.assignedTo;
+          assignedTo = newLead.assignedTo;
+        }
+      }
+
       const { error } = await supabase
         .from('leads')
         .insert({
-          user_id: userRole.user_id,
+          user_id: assignedUserId || userRole.user_id,
           company_id: userRole.company_id,
           name: newLead.name,
           email: newLead.email,
           contact: newLead.contact,
           description: newLead.description || null,
-          assigned_to: newLead.assignedTo === 'unassigned' ? null : newLead.assignedTo || null,
-          status: 'assigned',
+          assigned_to: assignedTo,
+          group_id: newLead.groupId && newLead.groupId !== 'none' ? newLead.groupId : null,
+          status: assignedTo ? 'assigned' : 'unassigned',
         });
 
       if (error) throw error;
@@ -399,6 +452,7 @@ export default function ManagerDashboard() {
         company: "",
         description: "",
         assignedTo: "",
+        groupId: "",
       });
       setIsAddLeadModalOpen(false);
       fetchData();
@@ -407,6 +461,93 @@ export default function ManagerDashboard() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to add lead. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Lead Group Handlers
+  const handleAddLeadGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!userRole?.company_id) return;
+
+    try {
+      const { error } = await supabase
+        .from('lead_groups')
+        .insert({
+          company_id: userRole.company_id,
+          group_name: newLeadGroup.groupName,
+          description: newLeadGroup.description || null,
+          assigned_to: userRole.user_id, // Assign to current manager
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Lead group created successfully!',
+      });
+
+      // Reset form and close modal
+      setNewLeadGroup({
+        groupName: "",
+        description: "",
+      });
+      setIsAddLeadGroupModalOpen(false);
+      fetchData();
+    } catch (error: any) {
+      console.error('Error creating lead group:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create lead group. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleViewLeadGroup = (group: any) => {
+    setSelectedLeadGroup(group);
+    setIsViewingGroupPage(true);
+  };
+
+  const handleAssignEntireGroupToEmployee = async (groupId: string, employeeUserId: string) => {
+    try {
+      // Get all leads in this group
+      const groupLeads = leads.filter(lead => lead.group_id === groupId);
+      
+      if (groupLeads.length === 0) {
+        toast({
+          title: 'No Leads',
+          description: 'This group has no leads to assign.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Update all leads in the group to be assigned to the employee
+      const { error } = await supabase
+        .from('leads')
+        .update({ 
+          assigned_to: employeeUserId,
+          user_id: employeeUserId,
+          status: 'assigned'
+        })
+        .eq('group_id', groupId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: `Assigned ${groupLeads.length} lead${groupLeads.length > 1 ? 's' : ''} to employee successfully!`,
+      });
+
+      fetchData(); // Refresh data
+    } catch (error: any) {
+      console.error('Error assigning group:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to assign group. Please try again.',
         variant: 'destructive',
       });
     }
@@ -493,16 +634,19 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleDeleteLead = async (leadId: string) => {
-    if (!window.confirm('Are you sure you want to delete this lead?')) {
-      return;
-    }
+  const handleDeleteLead = (lead: any) => {
+    setLeadToDelete(lead);
+    setIsDeleteLeadModalOpen(true);
+  };
+
+  const confirmDeleteLead = async () => {
+    if (!leadToDelete) return;
 
     try {
       const { error } = await supabase
         .from('leads')
         .delete()
-        .eq('id', leadId);
+        .eq('id', leadToDelete.id || leadToDelete);
 
       if (error) throw error;
 
@@ -511,6 +655,8 @@ export default function ManagerDashboard() {
         description: 'Lead deleted successfully!',
       });
 
+      setIsDeleteLeadModalOpen(false);
+      setLeadToDelete(null);
       fetchData();
     } catch (error: any) {
       console.error('Error deleting lead:', error);
@@ -554,13 +700,18 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
+    setIsSignOutDialogOpen(true);
+  };
+
+  const confirmSignOut = async () => {
     try {
       await signOut();
       toast({
         title: "Signed out successfully",
         description: "You have been logged out of your account.",
       });
+      setIsSignOutDialogOpen(false);
     } catch (error) {
       console.error('Sign out error:', error);
       toast({
@@ -568,6 +719,7 @@ export default function ManagerDashboard() {
         description: "There was an error signing you out. Please try again.",
         variant: "destructive",
       });
+      setIsSignOutDialogOpen(false);
     }
   };
 
@@ -585,27 +737,45 @@ export default function ManagerDashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card px-6 py-4">
+      <header className="border-b bg-card px-6 py-4 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
               src="/logo.png" 
               alt="Tasknova" 
-              className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+              className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
               onError={(e) => {
                 e.currentTarget.src = "/logo2.png";
               }}
             />
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Manager Dashboard</h1>
-              <p className="text-muted-foreground">Welcome, {manager?.full_name || 'Manager'} • {company?.name}</p>
+            <div className="border-l-2 border-green-500/30 pl-4">
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                  Manager Dashboard
+                  <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-none font-semibold px-2.5 py-0.5 text-xs shadow-md">
+                    <UserCog className="h-3 w-3 mr-1" />
+                    MANAGER
+                  </Badge>
+                </h1>
+              </div>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-lg">👋</span>
+                  <span className="font-semibold text-foreground">{manager?.full_name || 'Manager'}</span>
+                </span>
+                <span className="text-green-500">•</span>
+                <span className="flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-green-500" />
+                  <span className="font-medium">{company?.name}</span>
+                </span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <Button 
               variant="outline"
               onClick={handleSignOut}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="flex items-center gap-2 font-medium border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all"
             >
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -890,25 +1060,35 @@ export default function ManagerDashboard() {
               <Card>
                 <CardHeader>
                   <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Latest calls and lead assignments</CardDescription>
+                  <CardDescription>Latest 3 calls from your team</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {calls.slice(0, 5).map((call) => {
+                    {calls.slice(0, 3).map((call) => {
+                      const employee = employees.find(emp => emp.user_id === call.employee_id);
+                      const lead = leads.find(l => l.id === call.lead_id);
                       const analysis = analyses.find(a => a.recording_id === call.id);
+                      
                       return (
-                        <div key={call.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                              <PhoneCall className="h-4 w-4 text-blue-600" />
+                        <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                          <div className="flex items-center space-x-3 flex-1">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <PhoneCall className="h-5 w-5 text-blue-600" />
                             </div>
-                            <div>
-                              <p className="font-medium">Call completed</p>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(call.created_at).toLocaleDateString()}
+                            <div className="flex-1">
+                              <p className="font-medium">
+                                {employee?.full_name || 'Unknown Employee'} called {lead?.name || 'Unknown Lead'}
                               </p>
+                              <p className="text-sm text-muted-foreground">
+                                {lead?.contact} • {new Date(call.created_at).toLocaleString()}
+                              </p>
+                              {call.outcome && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Outcome: <span className="font-medium capitalize">{call.outcome.replace(/_/g, ' ')}</span>
+                                </p>
+                              )}
                               {analysis && (
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="flex items-center gap-2 mt-2">
                                   <Badge variant="outline" className="text-xs">
                                     Sentiment: {analysis.sentiment_score}%
                                   </Badge>
@@ -923,11 +1103,6 @@ export default function ManagerDashboard() {
                             <Badge variant={call.status === 'completed' ? 'default' : 'secondary'}>
                               {call.status}
                             </Badge>
-                            {analysis && (
-                              <Button variant="ghost" size="sm">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            )}
                           </div>
                         </div>
                       );
@@ -939,83 +1114,6 @@ export default function ManagerDashboard() {
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Employee Performance */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Employee Performance</CardTitle>
-                  <CardDescription>Individual performance metrics for your team members</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {employees.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No employees to display performance data</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {employees.map((employee) => {
-                        // Get employee's leads
-                        const employeeLeads = leads.filter(lead => lead.assigned_to === employee.user_id);
-                        
-                        // Get employee's calls (using employee_id from call_history table)
-                        const employeeCalls = calls.filter(call => call.employee_id === employee.id);
-                        
-                        // Get unique leads that have been called by this employee
-                        const calledLeadIds = [...new Set(employeeCalls.map(call => call.lead_id))];
-                        const calledLeads = employeeLeads.filter(lead => calledLeadIds.includes(lead.id));
-                        
-                        // Get pending leads (not called yet)
-                        const pendingLeads = employeeLeads.filter(lead => !calledLeadIds.includes(lead.id));
-                        
-                        // Get follow-up calls
-                        const followUpCalls = employeeCalls.filter(call => call.outcome === 'follow_up');
-                        
-                        // Get completed calls
-                        const completedCalls = employeeCalls.filter(call => 
-                          call.outcome === 'converted' || call.outcome === 'completed' || call.outcome === 'interested'
-                        );
-
-                        return (
-                          <div key={employee.id} className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center space-x-4">
-                              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                                <User className="h-5 w-5 text-purple-500" />
-                              </div>
-                              <div>
-                                <h4 className="font-medium">{employee.full_name}</h4>
-                                <p className="text-sm text-muted-foreground">{employee.email}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-4 text-sm">
-                              <div className="text-center">
-                                <div className="font-semibold">{employeeLeads.length}</div>
-                                <div className="text-muted-foreground">Total Leads</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="font-semibold">{calledLeads.length}</div>
-                                <div className="text-muted-foreground">Called</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="font-semibold">{pendingLeads.length}</div>
-                                <div className="text-muted-foreground">Pending</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="font-semibold">{followUpCalls.length}</div>
-                                <div className="text-muted-foreground">Follow-ups</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="font-semibold">{completedCalls.length}</div>
-                                <div className="text-muted-foreground">Completed</div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1034,10 +1132,23 @@ export default function ManagerDashboard() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>My Team ({employees.length})</CardTitle>
-                  <CardDescription>
-                    Employees under your management
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>My Team ({employees.length})</CardTitle>
+                      <CardDescription>
+                        Employees under your management
+                      </CardDescription>
+                    </div>
+                    <div className="relative w-64">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search employees..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {employees.length === 0 ? (
@@ -1054,7 +1165,12 @@ export default function ManagerDashboard() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {employees.map((employee) => (
+                      {employees
+                        .filter(employee => 
+                          employee.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          employee.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map((employee) => (
                         <div key={employee.id} className="flex items-center justify-between p-4 border rounded-lg">
                           <div className="flex items-center space-x-4">
                             <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
@@ -1088,6 +1204,16 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                       ))}
+                      {employees.filter(employee => 
+                        employee.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        employee.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                      ).length === 0 && searchTerm && (
+                        <div className="text-center py-8">
+                          <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-muted-foreground">No employees found matching "{searchTerm}"</p>
+                          <p className="text-sm text-muted-foreground mt-2">Try adjusting your search terms</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -1106,6 +1232,14 @@ export default function ManagerDashboard() {
                 </Button>
               </div>
 
+              {/* Tabs for Leads and Lead Groups */}
+              <Tabs value={leadsSection} onValueChange={(value) => setLeadsSection(value as 'leads' | 'groups')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="leads">All Leads</TabsTrigger>
+                  <TabsTrigger value="groups">Lead Groups</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="leads" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>All Leads ({leads.length})</CardTitle>
@@ -1212,7 +1346,7 @@ export default function ManagerDashboard() {
                                 <Button 
                                   variant="ghost" 
                                   size="icon"
-                                  onClick={() => handleDeleteLead(lead.id)}
+                                  onClick={() => handleDeleteLead(lead)}
                                   className="text-red-600 hover:text-red-700"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -1225,6 +1359,249 @@ export default function ManagerDashboard() {
                   )}
                 </CardContent>
               </Card>
+                </TabsContent>
+
+                {/* Lead Groups Section */}
+                <TabsContent value="groups" className="space-y-6">
+                  {isViewingGroupPage && selectedLeadGroup ? (
+                    // Full Page View for Lead Group
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Button variant="ghost" onClick={() => setIsViewingGroupPage(false)} className="mb-2">
+                            ← Back to Groups
+                          </Button>
+                          <h2 className="text-2xl font-bold">{selectedLeadGroup.group_name}</h2>
+                          <p className="text-muted-foreground">Manage and assign leads in this group</p>
+                        </div>
+                      </div>
+
+                      {/* Group Stats */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold">
+                              {leads.filter(lead => lead.group_id === selectedLeadGroup.id).length}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Assigned</CardTitle>
+                            <Users className="h-4 w-4 text-green-600" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold text-green-600">
+                              {leads.filter(lead => lead.group_id === selectedLeadGroup.id && lead.assigned_to).length}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Unassigned</CardTitle>
+                            <AlertTriangle className="h-4 w-4 text-orange-600" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold text-orange-600">
+                              {leads.filter(lead => lead.group_id === selectedLeadGroup.id && !lead.assigned_to).length}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Created</CardTitle>
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-sm font-medium">
+                              {new Date(selectedLeadGroup.created_at).toLocaleDateString()}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Assign Entire Group */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Assign Entire Group</CardTitle>
+                          <CardDescription>Assign all leads in this group to a single employee</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center gap-4">
+                            <Select
+                              onValueChange={(value) => {
+                                if (value && value !== 'select') {
+                                  handleAssignEntireGroupToEmployee(selectedLeadGroup.id, value);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select an employee" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="select" disabled>Choose employee...</SelectItem>
+                                {employees.map((employee) => (
+                                  <SelectItem key={employee.user_id} value={employee.user_id}>
+                                    {employee.full_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Leads List */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Leads in This Group</CardTitle>
+                          <CardDescription>View and manage individual lead assignments</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {leads.filter(lead => lead.group_id === selectedLeadGroup.id).length === 0 ? (
+                            <div className="text-center py-8">
+                              <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                              <p className="text-muted-foreground">No leads in this group</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {leads.filter(lead => lead.group_id === selectedLeadGroup.id).map((lead) => {
+                                const assignedEmployee = employees.find(emp => emp.user_id === lead.assigned_to);
+                                
+                                return (
+                                  <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                    <div className="flex items-center space-x-4 flex-1">
+                                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <Phone className="h-5 w-5 text-blue-500" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <h4 className="font-medium">{lead.name}</h4>
+                                        <p className="text-sm text-muted-foreground">{lead.email}</p>
+                                        <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      {assignedEmployee ? (
+                                        <Badge variant="secondary">
+                                          Assigned to: {assignedEmployee.full_name}
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-orange-600">
+                                          Unassigned
+                                        </Badge>
+                                      )}
+                                      <Select
+                                        value={lead.assigned_to || ""}
+                                        onValueChange={async (value) => {
+                                          try {
+                                            const { error } = await supabase
+                                              .from('leads')
+                                              .update({ 
+                                                assigned_to: value,
+                                                user_id: value,
+                                                status: 'assigned' 
+                                              })
+                                              .eq('id', lead.id);
+
+                                            if (error) throw error;
+
+                                            toast({
+                                              title: 'Success',
+                                              description: 'Lead assigned successfully!',
+                                            });
+
+                                            fetchData();
+                                          } catch (error: any) {
+                                            toast({
+                                              title: 'Error',
+                                              description: error.message,
+                                              variant: 'destructive',
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger className="w-48">
+                                          <SelectValue placeholder="Assign to..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {employees.map((employee) => (
+                                            <SelectItem key={employee.user_id} value={employee.user_id}>
+                                              {employee.full_name}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ) : (
+                    // List View of Groups
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="flex items-center gap-2">
+                              <Users className="h-5 w-5" />
+                              Lead Groups
+                            </CardTitle>
+                            <CardDescription>
+                              Create and manage lead groups for your team
+                            </CardDescription>
+                          </div>
+                          <Button onClick={() => setIsAddLeadGroupModalOpen(true)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Lead Group
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {leadGroups.length === 0 ? (
+                          <div className="text-center py-8">
+                            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                            <p className="text-muted-foreground mb-2">No lead groups yet</p>
+                            <p className="text-sm text-muted-foreground">Create your first lead group to organize your leads</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {leadGroups.map((group) => (
+                              <div key={group.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                <div>
+                                  <h3 className="font-medium">{group.group_name}</h3>
+                                  <p className="text-sm text-muted-foreground">
+                                    Created {new Date(group.created_at).toLocaleDateString()}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {leads.filter(lead => lead.group_id === group.id).length} leads
+                                  </p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => handleViewLeadGroup(group)}>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    View & Assign
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
 
@@ -1385,21 +1762,46 @@ export default function ManagerDashboard() {
               />
                         </div>
                         <div>
-              <Label htmlFor="assignedTo">Assign to Employee</Label>
-              <Select value={newLead.assignedTo} onValueChange={(value) => setNewLead(prev => ({ ...prev, assignedTo: value }))}>
+              <Label htmlFor="leadGroup">Lead Group (Optional)</Label>
+              <Select value={newLead.groupId || 'none'} onValueChange={(value) => setNewLead(prev => ({ ...prev, groupId: value === 'none' ? '' : value }))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select employee (optional)" />
+                  <SelectValue placeholder="Select a group (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="unassigned">No assignment</SelectItem>
-                  {employees.map((employee) => (
-                    <SelectItem key={employee.user_id} value={employee.user_id}>
-                      {employee.full_name}
+                  <SelectItem value="none">No Group</SelectItem>
+                  {leadGroups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.group_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
                         </div>
+                        
+                        {!newLead.groupId || newLead.groupId === 'none' ? (
+                          <div>
+                            <Label htmlFor="assignedTo">Assign to Employee</Label>
+                            <Select value={newLead.assignedTo} onValueChange={(value) => setNewLead(prev => ({ ...prev, assignedTo: value }))}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select employee (optional)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unassigned">No assignment</SelectItem>
+                                {employees.map((employee) => (
+                                  <SelectItem key={employee.user_id} value={employee.user_id}>
+                                    {employee.full_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <p className="text-sm text-blue-800">
+                              <span className="font-medium">ℹ️ Group Assignment:</span> This lead will be assigned based on who the group leads are assigned to.
+                            </p>
+                          </div>
+                        )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setIsAddLeadModalOpen(false)}>
                 Cancel
@@ -1408,6 +1810,51 @@ export default function ManagerDashboard() {
                 Add Lead
                         </Button>
                       </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Lead Group Modal */}
+      <Dialog open={isAddLeadGroupModalOpen} onOpenChange={setIsAddLeadGroupModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Lead Group</DialogTitle>
+            <DialogDescription>
+              Create a new lead group to organize your leads.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddLeadGroup} className="space-y-4">
+            <div>
+              <Label htmlFor="groupName">Group Name *</Label>
+              <Input
+                id="groupName"
+                value={newLeadGroup.groupName}
+                onChange={(e) => setNewLeadGroup(prev => ({ ...prev, groupName: e.target.value }))}
+                placeholder="Enter group name"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="groupDescription">Description</Label>
+              <Textarea
+                id="groupDescription"
+                value={newLeadGroup.description}
+                onChange={(e) => setNewLeadGroup(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Enter group description (optional)"
+                rows={3}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => {
+                setIsAddLeadGroupModalOpen(false);
+                setNewLeadGroup({ groupName: "", description: "" });
+              }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!newLeadGroup.groupName}>
+                Create Group
+              </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
@@ -1646,6 +2093,205 @@ export default function ManagerDashboard() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lead Confirmation Modal */}
+      <Dialog open={isDeleteLeadModalOpen} onOpenChange={setIsDeleteLeadModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Lead
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{leadToDelete?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {leadToDelete && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm"><span className="font-medium">Name:</span> {leadToDelete.name}</p>
+                <p className="text-sm"><span className="font-medium">Email:</span> {leadToDelete.email}</p>
+                <p className="text-sm"><span className="font-medium">Contact:</span> {leadToDelete.contact}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => {
+              setIsDeleteLeadModalOpen(false);
+              setLeadToDelete(null);
+            }}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteLead}>
+              Yes, Delete Lead
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Out Confirmation Dialog */}
+      <Dialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirm Sign Out
+            </DialogTitle>
+            <DialogDescription className="text-base pt-2">
+              Are you sure you want to sign out? You will need to log in again to access your dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSignOutDialogOpen(false)}
+              className="font-medium"
+            >
+              No, Stay
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmSignOut}
+              className="font-medium"
+            >
+              Yes, Sign Out
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Lead Group Modal */}
+      <Dialog open={isViewLeadGroupModalOpen} onOpenChange={setIsViewLeadGroupModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manage Lead Group: {selectedLeadGroup?.group_name}</DialogTitle>
+            <DialogDescription>
+              View all leads in this group and assign them to your employees
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+              <div>
+                <Label className="text-muted-foreground">Group Name</Label>
+                <p className="font-medium">{selectedLeadGroup?.group_name}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Total Leads</Label>
+                <p className="font-medium">{leads.filter(lead => lead.group_id === selectedLeadGroup?.id).length}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Created</Label>
+                <p className="font-medium">{selectedLeadGroup?.created_at ? new Date(selectedLeadGroup.created_at).toLocaleDateString() : 'N/A'}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Unassigned Leads</Label>
+                <p className="font-medium text-orange-600">
+                  {leads.filter(lead => lead.group_id === selectedLeadGroup?.id && !lead.assigned_to).length}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-3">Leads in this Group</h3>
+              {leads.filter(lead => lead.group_id === selectedLeadGroup?.id).length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No leads in this group yet
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {leads.filter(lead => lead.group_id === selectedLeadGroup?.id).map((lead) => {
+                    const assignedEmployee = employees.find(emp => emp.user_id === lead.assigned_to);
+                    const isAssigned = !!assignedEmployee;
+                    
+                    return (
+                      <div 
+                        key={lead.id} 
+                        className={`flex items-center justify-between p-3 border rounded-lg ${
+                          isAssigned 
+                            ? 'bg-green-50 border-green-200' 
+                            : 'bg-orange-50 border-orange-200'
+                        }`}
+                      >
+                        <div>
+                          <p className="font-medium">{lead.name}</p>
+                          <p className="text-sm text-muted-foreground">{lead.email}</p>
+                          <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                          {isAssigned ? (
+                            <p className="text-xs text-green-600 font-medium">✓ Assigned to: {assignedEmployee.full_name}</p>
+                          ) : (
+                            <p className="text-xs text-orange-600 font-medium">⚠ Unassigned</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={
+                            lead.status === 'converted' ? 'default' :
+                            lead.status === 'assigned' ? 'secondary' :
+                            lead.status === 'active' ? 'outline' : 'destructive'
+                          }>
+                            {lead.status}
+                          </Badge>
+                          {!isAssigned && employees.length > 0 && (
+                            <Select
+                              onValueChange={async (employeeUserId) => {
+                                try {
+                                  const { error } = await supabase
+                                    .from('leads')
+                                    .update({ 
+                                      assigned_to: employeeUserId,
+                                      status: 'assigned'
+                                    })
+                                    .eq('id', lead.id);
+
+                                  if (error) throw error;
+
+                                  toast({
+                                    title: 'Success',
+                                    description: 'Lead assigned successfully!',
+                                  });
+
+                                  fetchData(); // Refresh data
+                                } catch (error: any) {
+                                  console.error('Error assigning lead:', error);
+                                  toast({
+                                    title: 'Error',
+                                    description: error.message || 'Failed to assign lead.',
+                                    variant: 'destructive',
+                                  });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Assign to..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {employees.map((emp) => (
+                                  <SelectItem key={emp.user_id} value={emp.user_id}>
+                                    {emp.full_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button type="button" onClick={() => {
+              setIsViewLeadGroupModalOpen(false);
+              setSelectedLeadGroup(null);
+            }}>
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

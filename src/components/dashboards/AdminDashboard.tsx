@@ -20,6 +20,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import CallHistoryManager from "@/components/CallHistoryManager";
 import AdminReportsPage from "@/components/AdminReportsPage";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
 import { 
   Building, 
   Users, 
@@ -51,7 +53,10 @@ import {
   BarChart3,
   Clock,
   Upload,
-  FileText
+  FileText,
+  ArrowLeft,
+  CheckCircle,
+  UserCog
 } from "lucide-react";
 
 interface User {
@@ -80,6 +85,16 @@ interface UserCredentials {
   name: string;
 }
 
+// Department options for managers
+const DEPARTMENT_OPTIONS = [
+  { value: 'sales', label: 'Sales' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'support', label: 'Customer Support' },
+  { value: 'operations', label: 'Operations' },
+  { value: 'hr', label: 'Human Resources' },
+  { value: 'other', label: 'Other' }
+];
+
 export default function AdminDashboard() {
   const { user, userRole, company, signOut } = useAuth();
   const { toast } = useToast();
@@ -93,18 +108,35 @@ export default function AdminDashboard() {
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSidebarItem, setActiveSidebarItem] = useState('overview');
+  const [isViewingGroupPage, setIsViewingGroupPage] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [isViewUserModalOpen, setIsViewUserModalOpen] = useState(false);
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [isDeleteUserModalOpen, setIsDeleteUserModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isAddLeadGroupModalOpen, setIsAddLeadGroupModalOpen] = useState(false);
+  const [isEditLeadGroupModalOpen, setIsEditLeadGroupModalOpen] = useState(false);
+  const [isViewLeadGroupModalOpen, setIsViewLeadGroupModalOpen] = useState(false);
+  const [isDeleteLeadGroupModalOpen, setIsDeleteLeadGroupModalOpen] = useState(false);
+  const [selectedLeadGroup, setSelectedLeadGroup] = useState<any>(null);
   const [isUploadCSVModalOpen, setIsUploadCSVModalOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvLeads, setCsvLeads] = useState<any[]>([]);
+  const [isUploadingCSV, setIsUploadingCSV] = useState(false);
+  const [csvGroupOption, setCsvGroupOption] = useState<'none' | 'existing' | 'new'>('none');
+  const [csvSelectedGroupId, setCsvSelectedGroupId] = useState<string>('');
+  const [csvNewGroupName, setCsvNewGroupName] = useState<string>('');
+  const [csvAssignedTo, setCsvAssignedTo] = useState<string>('unassigned');
   const [isViewLeadModalOpen, setIsViewLeadModalOpen] = useState(false);
   const [isEditLeadModalOpen, setIsEditLeadModalOpen] = useState(false);
+  const [isDeleteLeadModalOpen, setIsDeleteLeadModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [leadToDelete, setLeadToDelete] = useState<any>(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [leadsSection, setLeadsSection] = useState<'leads' | 'groups'>('leads');
   const [addUserType, setAddUserType] = useState<'manager' | 'employee'>('manager');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -114,6 +146,7 @@ export default function AdminDashboard() {
     password: boolean;
   }>({ email: false, password: false });
   const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>('all');
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
   const [showPassword, setShowPassword] = useState(false);
   const [showEmployeePassword, setShowEmployeePassword] = useState(false);
   const [showUserDetailsPassword, setShowUserDetailsPassword] = useState(false);
@@ -144,6 +177,7 @@ export default function AdminDashboard() {
     department: "",
     phone: "",
   });
+  const [customDepartment, setCustomDepartment] = useState("");
   const [newLead, setNewLead] = useState({
     name: "",
     email: "",
@@ -154,6 +188,7 @@ export default function AdminDashboard() {
   });
   const [newLeadGroup, setNewLeadGroup] = useState({
     groupName: "",
+    assignedTo: "",
   });
 
   const [editUser, setEditUser] = useState({
@@ -477,13 +512,35 @@ export default function AdminDashboard() {
   };
 
   const addFromNumber = () => {
-    if (newFromNumber.trim() && !companySettings.from_numbers.includes(newFromNumber.trim())) {
-      setCompanySettings(prev => ({
-        ...prev,
-        from_numbers: [...prev.from_numbers, newFromNumber.trim()]
-      }));
-      setNewFromNumber("");
+    const trimmedNumber = newFromNumber.trim();
+    
+    if (!trimmedNumber) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a phone number.',
+        variant: 'destructive',
+      });
+      return;
     }
+    
+    if (companySettings.from_numbers.includes(trimmedNumber)) {
+      toast({
+        title: 'Number Already Exists',
+        description: `The phone number "${trimmedNumber}" is already in your from numbers list.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setCompanySettings(prev => ({
+      ...prev,
+      from_numbers: [...prev.from_numbers, trimmedNumber]
+    }));
+    setNewFromNumber("");
+    toast({
+      title: 'Success',
+      description: 'From number added successfully!',
+    });
   };
 
   const removeFromNumber = (index: number) => {
@@ -545,6 +602,9 @@ export default function AdminDashboard() {
       console.log('Creating user with ID:', demoUserId);
 
       if (addUserType === 'manager') {
+        // Use custom department if "other" is selected, otherwise use the selected department
+        const finalDepartment = newUser.department === 'other' ? customDepartment : newUser.department;
+        
         // Create manager
         const { error: managerError } = await supabase
           .from('managers')
@@ -553,7 +613,7 @@ export default function AdminDashboard() {
             company_id: userRole.company_id,
             full_name: newUser.fullName,
             email: emailToCheck,
-            department: newUser.department,
+            department: finalDepartment,
             phone: newUser.phone,
             password: newUser.password,
             is_active: true,
@@ -636,6 +696,7 @@ export default function AdminDashboard() {
         department: "",
         phone: "",
       });
+      setCustomDepartment("");
       setShowPassword(false);
       setIsAddUserModalOpen(false);
       fetchUsers();
@@ -914,12 +975,26 @@ export default function AdminDashboard() {
     }
   };
 
-  const filteredManagers = managers.filter(manager =>
-    manager.user_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredManagers = managers.filter(manager => {
+    const search = searchTerm.toLowerCase();
+    const matchesSearch = (
+      manager.profile?.full_name?.toLowerCase().includes(search) ||
+      manager.profile?.email?.toLowerCase().includes(search) ||
+      manager.profile?.department?.toLowerCase().includes(search) ||
+      manager.user_id?.toLowerCase().includes(search)
+    );
+    const matchesDepartment = selectedDepartmentFilter === 'all' || manager.profile?.department === selectedDepartmentFilter;
+    return matchesSearch && matchesDepartment;
+  });
 
   const filteredEmployees = employees.filter(employee => {
-    const matchesSearch = employee.user_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    const search = searchTerm.toLowerCase();
+    const matchesSearch = (
+      employee.profile?.full_name?.toLowerCase().includes(search) ||
+      employee.profile?.email?.toLowerCase().includes(search) ||
+      employee.profile?.department?.toLowerCase().includes(search) ||
+      employee.user_id?.toLowerCase().includes(search)
+    );
     const matchesManager = selectedManagerFilter === 'all' || employee.manager_id === selectedManagerFilter;
     return matchesSearch && matchesManager;
   });
@@ -947,7 +1022,11 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
+    setIsSignOutDialogOpen(true);
+  };
+
+  const confirmSignOut = async () => {
     try {
       console.log('Starting sign out process...');
       await signOut();
@@ -955,6 +1034,7 @@ export default function AdminDashboard() {
         title: 'Success',
         description: 'Signed out successfully.',
       });
+      setIsSignOutDialogOpen(false);
     } catch (error) {
       console.error('Error signing out:', error);
       toast({
@@ -962,6 +1042,7 @@ export default function AdminDashboard() {
         description: 'Failed to sign out. Please try again.',
         variant: 'destructive',
       });
+      setIsSignOutDialogOpen(false);
     }
   };
 
@@ -971,6 +1052,50 @@ export default function AdminDashboard() {
     if (!userRole?.company_id) return;
 
     try {
+      // Determine user_id based on group or direct assignment
+      let assignedUserId = null;
+      let leadStatus = 'unassigned';
+      
+      if (newLead.groupId && newLead.groupId !== "none") {
+        // If a group is selected, get the manager assigned to that group
+        const selectedGroup = leadGroups.find(g => g.id === newLead.groupId);
+        if (!selectedGroup?.assigned_to) {
+          toast({
+            title: 'Error',
+            description: 'This lead group is not assigned to any manager yet. Please assign the group to a manager first or select a different group.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        // Get the manager's user_id from the assigned_to (which is manager.id)
+        const assignedManager = managers.find(m => m.id === selectedGroup.assigned_to);
+        if (assignedManager) {
+          assignedUserId = assignedManager.user_id;
+          leadStatus = 'assigned';
+        } else {
+          toast({
+            title: 'Error',
+            description: 'Could not find the manager assigned to this group. Please try again.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      } else if (newLead.assignedTo && newLead.assignedTo !== "unassigned") {
+        // Direct assignment to a manager
+        assignedUserId = newLead.assignedTo;
+        leadStatus = 'assigned';
+      }
+
+      // Validate that user_id is set (required by database constraint)
+      if (!assignedUserId) {
+        toast({
+          title: 'Error',
+          description: 'Please assign the lead to a manager or select a group with an assigned manager.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('leads')
         .insert({
@@ -979,9 +1104,9 @@ export default function AdminDashboard() {
           contact: newLead.contact,
           description: newLead.description || null,
           assigned_to: null, // Only employees should be in assigned_to
-          user_id: newLead.assignedTo === "unassigned" ? null : newLead.assignedTo || null, // Admin assigns to manager
+          user_id: assignedUserId, // Admin assigns to manager (via group or direct)
           company_id: userRole.company_id,
-          status: newLead.assignedTo === "unassigned" ? 'unassigned' : 'assigned', // Set proper status based on assignment
+          status: leadStatus,
           group_id: newLead.groupId || null, // Add group assignment
         });
 
@@ -1023,16 +1148,19 @@ export default function AdminDashboard() {
     setIsEditLeadModalOpen(true);
   };
 
-  const handleDeleteLead = async (lead: any) => {
-    if (!confirm(`Are you sure you want to delete ${lead.name}?`)) {
-      return;
-    }
+  const handleDeleteLead = (lead: any) => {
+    setLeadToDelete(lead);
+    setIsDeleteLeadModalOpen(true);
+  };
+
+  const confirmDeleteLead = async () => {
+    if (!leadToDelete) return;
 
     try {
       const { error } = await supabase
         .from('leads')
         .delete()
-        .eq('id', lead.id);
+        .eq('id', leadToDelete.id);
 
       if (error) throw error;
 
@@ -1041,6 +1169,8 @@ export default function AdminDashboard() {
         description: 'Lead deleted successfully!',
       });
 
+      setIsDeleteLeadModalOpen(false);
+      setLeadToDelete(null);
       fetchUsers(); // Refresh data
     } catch (error: any) {
       console.error('Error deleting lead:', error);
@@ -1049,6 +1179,295 @@ export default function AdminDashboard() {
         description: error.message || 'Failed to delete lead. Please try again.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // Bulk Delete Handlers
+  const handleToggleLeadSelection = (leadId: string) => {
+    setSelectedLeadIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(leadId)) {
+        newSet.delete(leadId);
+      } else {
+        newSet.add(leadId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllLeads = (checked: boolean) => {
+    if (checked) {
+      const allLeadIds = new Set(leads.map(lead => lead.id));
+      setSelectedLeadIds(allLeadIds);
+    } else {
+      setSelectedLeadIds(new Set());
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedLeadIds.size === 0) return;
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (selectedLeadIds.size === 0) return;
+
+    try {
+      const idsToDelete = Array.from(selectedLeadIds);
+      
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: `Successfully deleted ${idsToDelete.length} lead${idsToDelete.length > 1 ? 's' : ''}.`,
+      });
+
+      setIsBulkDeleteModalOpen(false);
+      setSelectedLeadIds(new Set());
+      fetchUsers(); // Refresh data
+    } catch (error: any) {
+      console.error('Error bulk deleting leads:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete leads. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Lead Group Handlers
+  const handleViewLeadGroup = (group: any) => {
+    setSelectedLeadGroup(group);
+    setIsViewingGroupPage(true);
+  };
+
+  const handleEditLeadGroup = (group: any) => {
+    setSelectedLeadGroup(group);
+    setIsEditLeadGroupModalOpen(true);
+  };
+
+  const handleDeleteLeadGroup = (group: any) => {
+    setSelectedLeadGroup(group);
+    setIsDeleteLeadGroupModalOpen(true);
+  };
+
+  const confirmDeleteLeadGroup = async () => {
+    if (!selectedLeadGroup) return;
+
+    try {
+      // First, delete all leads in this group
+      const { data: leadsInGroup, error: fetchError } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('group_id', selectedLeadGroup.id);
+
+      if (fetchError) throw fetchError;
+
+      const leadsCount = leadsInGroup?.length || 0;
+
+      if (leadsCount > 0) {
+        const { error: deleteLeadsError } = await supabase
+          .from('leads')
+          .delete()
+          .eq('group_id', selectedLeadGroup.id);
+
+        if (deleteLeadsError) throw deleteLeadsError;
+      }
+
+      // Then delete the group itself
+      const { error: deleteGroupError } = await supabase
+        .from('lead_groups')
+        .delete()
+        .eq('id', selectedLeadGroup.id);
+
+      if (deleteGroupError) throw deleteGroupError;
+
+      toast({
+        title: 'Success',
+        description: `Lead group deleted successfully! ${leadsCount > 0 ? `${leadsCount} lead${leadsCount > 1 ? 's' : ''} also deleted.` : ''}`,
+      });
+
+      setIsDeleteLeadGroupModalOpen(false);
+      setSelectedLeadGroup(null);
+      fetchUsers(); // Refresh data
+    } catch (error: any) {
+      console.error('Error deleting lead group:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete lead group. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // CSV Upload Handlers
+  const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCsvFile(file);
+      parseCSVFile(file);
+    }
+  };
+
+  const parseCSVFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        toast({
+          title: 'Error',
+          description: 'CSV file is empty or invalid.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Parse CSV (skip header if present)
+      const parsedLeads: any[] = [];
+      const startIndex = lines[0].toLowerCase().includes('name') ? 1 : 0;
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Split by comma, handling quoted values
+        const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
+        
+        if (values.length >= 3) {
+          parsedLeads.push({
+            name: values[0],
+            email: values[1],
+            contact: values[2],
+            description: values[3] || ''
+          });
+        }
+      }
+
+      if (parsedLeads.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'No valid leads found in CSV file. Please check the format.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setCsvLeads(parsedLeads);
+      toast({
+        title: 'Success',
+        description: `Found ${parsedLeads.length} leads in CSV file.`,
+      });
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCSVUpload = async () => {
+    if (!userRole?.company_id || csvLeads.length === 0) return;
+
+    try {
+      setIsUploadingCSV(true);
+
+      let groupIdToUse = null;
+
+      // Handle group creation/selection
+      if (csvGroupOption === 'new' && csvNewGroupName.trim()) {
+        // Create new group
+        const { data: newGroup, error: groupError } = await supabase
+          .from('lead_groups')
+          .insert({
+            user_id: user?.id,
+            group_name: csvNewGroupName.trim(),
+            company_id: userRole.company_id,
+            assigned_to: csvAssignedTo === 'unassigned' ? null : managers.find(m => m.user_id === csvAssignedTo)?.id || null,
+          })
+          .select()
+          .single();
+
+        if (groupError) throw groupError;
+        groupIdToUse = newGroup.id;
+
+        toast({
+          title: 'Group Created',
+          description: `Lead group "${csvNewGroupName}" created successfully.`,
+        });
+      } else if (csvGroupOption === 'existing' && csvSelectedGroupId) {
+        groupIdToUse = csvSelectedGroupId;
+      }
+
+      // Determine user_id for leads
+      let assignedUserId = null;
+      let leadStatus = 'unassigned';
+
+      if (csvGroupOption === 'new' && csvAssignedTo && csvAssignedTo !== 'unassigned') {
+        // For newly created group, use the assigned manager directly
+        assignedUserId = csvAssignedTo;
+        leadStatus = 'assigned';
+      } else if (csvGroupOption === 'existing' && groupIdToUse) {
+        // For existing group, get the manager assigned to that group
+        const selectedGroup = leadGroups.find(g => g.id === groupIdToUse);
+        if (selectedGroup?.assigned_to) {
+          const assignedManager = managers.find(m => m.id === selectedGroup.assigned_to);
+          if (assignedManager) {
+            assignedUserId = assignedManager.user_id;
+            leadStatus = 'assigned';
+          }
+        }
+      } else if (csvGroupOption === 'none' && csvAssignedTo && csvAssignedTo !== 'unassigned') {
+        // Direct assignment without group
+        assignedUserId = csvAssignedTo;
+        leadStatus = 'assigned';
+      }
+
+      // Prepare leads for insertion
+      const leadsToInsert = csvLeads.map(lead => ({
+        name: lead.name,
+        email: lead.email,
+        contact: lead.contact,
+        description: lead.description || null,
+        assigned_to: null,
+        user_id: assignedUserId,
+        company_id: userRole.company_id,
+        status: leadStatus,
+        group_id: groupIdToUse,
+      }));
+
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(leadsToInsert)
+        .select();
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success!',
+        description: `Successfully uploaded ${data?.length || csvLeads.length} leads from CSV.`,
+      });
+
+      // Reset and close
+      setCsvFile(null);
+      setCsvLeads([]);
+      setCsvGroupOption('none');
+      setCsvSelectedGroupId('');
+      setCsvNewGroupName('');
+      setCsvAssignedTo('unassigned');
+      setIsUploadCSVModalOpen(false);
+      fetchUsers(); // Refresh data
+    } catch (error: any) {
+      console.error('Error uploading CSV:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to upload leads. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingCSV(false);
     }
   };
 
@@ -1192,28 +1611,55 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card px-6 py-4">
+      <header className="border-b bg-card px-6 py-4 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
               src="/logo.png" 
               alt="Tasknova" 
-              className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+              className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
               onError={(e) => {
                 e.currentTarget.src = "/logo2.png";
               }}
             />
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
-              <p className="text-muted-foreground">Welcome, {user?.user_metadata?.full_name || 'Admin'} • {company?.name}</p>
+            <div className="border-l-2 border-blue-500/30 pl-4">
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                  Admin Dashboard
+                  <Badge className="bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none font-semibold px-2.5 py-0.5 text-xs shadow-md">
+                    <Shield className="h-3 w-3 mr-1" />
+                    ADMIN
+                  </Badge>
+                </h1>
+              </div>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-lg">👋</span>
+                  <span className="font-semibold text-foreground">{user?.user_metadata?.full_name || 'Admin'}</span>
+                </span>
+                <span className="text-blue-500">•</span>
+                <span className="flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-blue-500" />
+                  <span className="font-medium">{company?.name}</span>
+                </span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <Button
+              variant="ghost"
+              size="sm"
+              className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
+              onClick={() => setActiveSidebarItem('settings')}
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+            <div className="h-8 w-px bg-gradient-to-b from-transparent via-border to-transparent"></div>
+            <Button
               variant="outline"
               size="sm"
               onClick={handleSignOut}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 font-medium border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all"
             >
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -1267,14 +1713,6 @@ export default function AdminDashboard() {
               Call History
             </Button>
             <Button 
-              variant={activeSidebarItem === 'performance' ? 'accent' : 'ghost'} 
-              className="w-full justify-start"
-              onClick={() => setActiveSidebarItem('performance')}
-            >
-              <BarChart3 className="h-4 w-4" />
-              Performance
-            </Button>
-            <Button 
               variant={activeSidebarItem === 'reports' ? 'accent' : 'ghost'} 
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('reports')}
@@ -1307,52 +1745,52 @@ export default function AdminDashboard() {
             <>
               {/* Company Overview Stats */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card>
+            <Card className="border-l-4 border-l-cyan-500 bg-gradient-to-br from-cyan-50 to-cyan-100/50 dark:from-cyan-950/20 dark:to-cyan-900/10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <Users className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{managers.length}</div>
+                <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">{managers.length}</div>
                 <p className="text-xs text-muted-foreground">
                   Active managers
                 </p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-l-4 border-l-pink-500 bg-gradient-to-br from-pink-50 to-pink-100/50 dark:from-pink-950/20 dark:to-pink-900/10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-                <UserPlus className="h-4 w-4 text-muted-foreground" />
+                <UserPlus className="h-4 w-4 text-pink-600 dark:text-pink-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{employees.length}</div>
+                <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">{employees.length}</div>
                 <p className="text-xs text-muted-foreground">
                   Active employees
                 </p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-950/20 dark:to-rose-900/10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <Phone className="h-4 w-4 text-rose-600 dark:text-rose-400" />
               </CardHeader>
               <CardContent>
-                    <div className="text-2xl font-bold">{leads.length}</div>
+                    <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">{leads.length}</div>
                 <p className="text-xs text-muted-foreground">
                       All time leads
                     </p>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-l-4 border-l-violet-500 bg-gradient-to-br from-violet-50 to-violet-100/50 dark:from-violet-950/20 dark:to-violet-900/10">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
-                    <PhoneCall className="h-4 w-4 text-muted-foreground" />
+                    <PhoneCall className="h-4 w-4 text-violet-600 dark:text-violet-400" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{calls.length}</div>
+                    <div className="text-2xl font-bold text-violet-600 dark:text-violet-400">{calls.length}</div>
                     <p className="text-xs text-muted-foreground">
                       All time calls
                 </p>
@@ -1364,13 +1802,13 @@ export default function AdminDashboard() {
               <div className="mb-8">
                 <h3 className="text-lg font-semibold mb-4">Team Call Quality Stats</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Avg Sentiment</CardTitle>
-                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                         {analyses.length > 0 
                           ? Math.round(analyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / analyses.length)
                           : 0}%
@@ -1381,13 +1819,13 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/20 dark:to-purple-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Avg Engagement</CardTitle>
-                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                      <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                         {analyses.length > 0 
                           ? Math.round(analyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / analyses.length)
                           : 0}%
@@ -1398,13 +1836,13 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-green-500 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
-                      <Shield className="h-4 w-4 text-muted-foreground" />
+                      <Shield className="h-4 w-4 text-green-600 dark:text-green-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                         {analyses.length > 0 
                           ? `${Math.round(analyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / analyses.length)}/10`
                           : '0/10'}
@@ -1415,13 +1853,13 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-orange-500 bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/20 dark:to-orange-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Completed Analyses</CardTitle>
-                      <Check className="h-4 w-4 text-muted-foreground" />
+                      <Check className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                         {analyses.filter(a => a.status?.toLowerCase() === 'completed').length}
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -1436,26 +1874,26 @@ export default function AdminDashboard() {
               <div className="mb-8">
                 <h3 className="text-lg font-semibold mb-4">Lead Management Stats</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <Card>
+                  <Card className="border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/20 dark:to-indigo-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <Phone className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{leads.length}</div>
+                      <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{leads.length}</div>
                       <p className="text-xs text-muted-foreground">
                         All leads in system
                       </p>
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-teal-500 bg-gradient-to-br from-teal-50 to-teal-100/50 dark:from-teal-950/20 dark:to-teal-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Called Leads</CardTitle>
-                      <PhoneCall className="h-4 w-4 text-muted-foreground" />
+                      <PhoneCall className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">
                         {[...new Set(calls.map(call => call.lead_id))].length}
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -1464,13 +1902,13 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Pending Calls</CardTitle>
-                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
                         {leads.length - [...new Set(calls.map(call => call.lead_id))].length}
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -1479,13 +1917,13 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
+                  <Card className="border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                         {leads.length > 0 
                           ? Math.round((leads.filter(lead => lead.status === 'converted').length / leads.length) * 100)
                           : 0}%
@@ -1496,6 +1934,151 @@ export default function AdminDashboard() {
                     </CardContent>
                   </Card>
                 </div>
+              </div>
+
+              {/* Visual Graphs Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                {/* Call Outcomes Distribution - Pie Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Call Outcomes Distribution</CardTitle>
+                    <CardDescription>Breakdown of call results</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {calls.length === 0 ? (
+                      <div className="text-center py-8">
+                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-muted-foreground">No calls data available</p>
+                      </div>
+                    ) : (
+                      <ChartContainer
+                        config={{
+                          completed: { label: "Completed", color: "#0088FE" },
+                          follow_up: { label: "Follow-up", color: "#00C49F" },
+                          not_answered: { label: "Not Answered", color: "#FFBB28" },
+                          not_interested: { label: "Not Interested", color: "#FF8042" },
+                          converted: { label: "Converted", color: "#8884d8" },
+                        }}
+                        className="h-[300px]"
+                      >
+                        <PieChart>
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Pie
+                            data={(() => {
+                              const outcomeCounts: { [key: string]: number } = {};
+                              calls.forEach(call => {
+                                const outcome = call.outcome || 'unknown';
+                                outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
+                              });
+                              const colors: { [key: string]: string } = {
+                                completed: '#0088FE',
+                                follow_up: '#00C49F',
+                                not_answered: '#FFBB28',
+                                not_interested: '#FF8042',
+                                converted: '#8884d8',
+                                unknown: '#888888',
+                              };
+                              return Object.entries(outcomeCounts).map(([name, value]) => ({
+                                name: name.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                value,
+                                fill: colors[name] || colors.unknown,
+                              }));
+                            })()}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {(() => {
+                              const outcomeCounts: { [key: string]: number } = {};
+                              calls.forEach(call => {
+                                const outcome = call.outcome || 'unknown';
+                                outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
+                              });
+                              const colors: { [key: string]: string } = {
+                                completed: '#0088FE',
+                                follow_up: '#00C49F',
+                                not_answered: '#FFBB28',
+                                not_interested: '#FF8042',
+                                converted: '#8884d8',
+                                unknown: '#888888',
+                              };
+                              return Object.entries(outcomeCounts).map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={colors[entry[0]] || colors.unknown} />
+                              ));
+                            })()}
+                          </Pie>
+                        </PieChart>
+                      </ChartContainer>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Calls by Day of Week - Bar Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Calls by Day of Week</CardTitle>
+                    <CardDescription>Call activity patterns throughout the week</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {calls.length === 0 ? (
+                      <div className="text-center py-8">
+                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-muted-foreground">No calls data available</p>
+                      </div>
+                    ) : (
+                      <ChartContainer
+                        config={{
+                          calls: { label: "Calls", color: "hsl(var(--chart-1))" },
+                        }}
+                        className="h-[300px]"
+                      >
+                        <BarChart data={(() => {
+                          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                          const dayColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE'];
+                          const dayCounts: { [key: number]: number } = {};
+                          
+                          calls.forEach(call => {
+                            const callDate = new Date(call.created_at);
+                            const dayOfWeek = callDate.getDay();
+                            dayCounts[dayOfWeek] = (dayCounts[dayOfWeek] || 0) + 1;
+                          });
+                          
+                          return dayNames.map((dayName, index) => ({
+                            day: dayName.substring(0, 3), // Short form: Sun, Mon, etc.
+                            calls: dayCounts[index] || 0,
+                            color: dayColors[index],
+                          }));
+                        })()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="day" />
+                          <YAxis />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="calls" radius={[8, 8, 0, 0]}>
+                            {(() => {
+                              const dayColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE'];
+                              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                              const dayCounts: { [key: number]: number } = {};
+                              
+                              calls.forEach(call => {
+                                const callDate = new Date(call.created_at);
+                                const dayOfWeek = callDate.getDay();
+                                dayCounts[dayOfWeek] = (dayCounts[dayOfWeek] || 0) + 1;
+                              });
+                              
+                              return dayNames.map((dayName, index) => (
+                                <Cell key={`cell-${index}`} fill={dayColors[index]} />
+                              ));
+                            })()}
+                          </Bar>
+                        </BarChart>
+                      </ChartContainer>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
           {/* Search */}
@@ -1700,6 +2283,21 @@ export default function AdminDashboard() {
                     />
                   </div>
                 </div>
+                <div className="w-64">
+                  <Select value={selectedDepartmentFilter} onValueChange={setSelectedDepartmentFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <SelectItem key={dept.value} value={dept.value}>
+                          {dept.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               {managers.length === 0 ? (
@@ -1897,7 +2495,7 @@ export default function AdminDashboard() {
           )}
 
 
-          {activeSidebarItem === 'leads' && (
+          {activeSidebarItem === 'leads' && !isViewingGroupPage && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -1996,9 +2594,24 @@ export default function AdminDashboard() {
                   </CardTitle>
                   <CardDescription>
                         Complete list of all leads in your system
+                        {selectedLeadIds.size > 0 && (
+                          <span className="ml-2 text-blue-600 font-medium">
+                            • {selectedLeadIds.size} selected
+                          </span>
+                        )}
                   </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
+                      {selectedLeadIds.size > 0 && (
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={handleBulkDelete}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete {selectedLeadIds.size} Lead{selectedLeadIds.size > 1 ? 's' : ''}
+                        </Button>
+                      )}
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -2023,6 +2636,25 @@ export default function AdminDashboard() {
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {/* Select All Checkbox */}
+                      {leads.length > 0 && (
+                        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border-2 border-dashed">
+                          <input
+                            type="checkbox"
+                            checked={selectedLeadIds.size === leads.length && leads.length > 0}
+                            onChange={(e) => handleSelectAllLeads(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                          />
+                          <Label className="text-sm font-medium cursor-pointer" onClick={() => handleSelectAllLeads(selectedLeadIds.size !== leads.length)}>
+                            Select All ({leads.length} leads)
+                          </Label>
+                          {selectedLeadIds.size > 0 && selectedLeadIds.size < leads.length && (
+                            <span className="text-xs text-muted-foreground">
+                              ({selectedLeadIds.size} of {leads.length} selected)
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {leads
                         .filter(lead => 
                           lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -2030,8 +2662,14 @@ export default function AdminDashboard() {
                           lead.contact?.toLowerCase().includes(searchTerm.toLowerCase())
                         )
                         .map((lead) => (
-                        <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div key={lead.id} className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${selectedLeadIds.has(lead.id) ? 'bg-blue-50 border-blue-300' : ''}`}>
                           <div className="flex items-center space-x-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedLeadIds.has(lead.id)}
+                              onChange={() => handleToggleLeadSelection(lead.id)}
+                              className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                            />
                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                               <Phone className="h-5 w-5 text-blue-500" />
                             </div>
@@ -2123,13 +2761,22 @@ export default function AdminDashboard() {
                                 <p className="text-sm text-muted-foreground">
                                   {leads.filter(lead => lead.group_id === group.id).length} leads
                                 </p>
+                                {group.assigned_to && (
+                                  <p className="text-sm text-blue-600 font-medium">
+                                    Assigned to: {managers.find(m => m.id === group.assigned_to)?.profile?.full_name || 'Manager'}
+                                  </p>
+                                )}
                               </div>
                               <div className="flex gap-2">
-                                <Button variant="outline" size="sm">
+                                <Button variant="outline" size="sm" onClick={() => handleViewLeadGroup(group)}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => handleEditLeadGroup(group)}>
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit
                                 </Button>
-                                <Button variant="outline" size="sm" className="text-red-600">
+                                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteLeadGroup(group)}>
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Delete
                                 </Button>
@@ -2145,6 +2792,235 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Lead Group Full Page View */}
+          {activeSidebarItem === 'leads' && isViewingGroupPage && selectedLeadGroup && (
+            <div className="space-y-6">
+              {/* Header with Back Button */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsViewingGroupPage(false);
+                      setSelectedLeadGroup(null);
+                    }}
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back to Lead Groups
+                  </Button>
+                  <div>
+                    <h2 className="text-2xl font-bold">{selectedLeadGroup.group_name}</h2>
+                    <p className="text-muted-foreground">Manage all leads in this group</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => handleEditLeadGroup(selectedLeadGroup)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Group
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => handleDeleteLeadGroup(selectedLeadGroup)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Group
+                  </Button>
+                </div>
+              </div>
+
+              {/* Group Info Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {leads.filter(lead => lead.group_id === selectedLeadGroup.id).length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">In this group</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Assigned To</CardTitle>
+                    <UserCog className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-lg font-bold">
+                      {selectedLeadGroup.assigned_to ? 
+                        managers.find(m => m.id === selectedLeadGroup.assigned_to)?.profile?.full_name || 'Manager' :
+                        'Unassigned'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Manager</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Active</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {leads.filter(lead => lead.group_id === selectedLeadGroup.id && (lead.status === 'active' || lead.status === 'assigned')).length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Active leads</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Converted</CardTitle>
+                    <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {leads.filter(lead => lead.group_id === selectedLeadGroup.id && lead.status === 'converted').length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Successful conversions</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* All Leads in Group */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>All Leads in Group</CardTitle>
+                      <CardDescription>
+                        View, edit, or delete leads in this group
+                      </CardDescription>
+                    </div>
+                    <Button onClick={() => {
+                      // Pre-populate the group ID when adding from group page
+                      setNewLead(prev => ({ ...prev, groupId: selectedLeadGroup.id }));
+                      setIsAddLeadModalOpen(true);
+                    }}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Lead to Group
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Search Bar */}
+                  <div className="mb-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search leads in group..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  {leads.filter(lead => lead.group_id === selectedLeadGroup.id).length === 0 ? (
+                    <div className="text-center py-12">
+                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No leads in this group yet</p>
+                      <Button className="mt-4" onClick={() => {
+                        // Pre-populate the group ID when adding from group page
+                        setNewLead(prev => ({ ...prev, groupId: selectedLeadGroup.id }));
+                        setIsAddLeadModalOpen(true);
+                      }}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add First Lead
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {leads
+                        .filter(lead => 
+                          lead.group_id === selectedLeadGroup.id &&
+                          (lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          lead.contact?.toLowerCase().includes(searchTerm.toLowerCase()))
+                        )
+                        .map((lead) => (
+                          <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3">
+                                <div>
+                                  <h4 className="font-medium text-lg">{lead.name}</h4>
+                                  <div className="flex items-center gap-4 mt-1">
+                                    <span className="text-sm text-muted-foreground flex items-center gap-1">
+                                      <Mail className="h-3 w-3" />
+                                      {lead.email}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground flex items-center gap-1">
+                                      <Phone className="h-3 w-3" />
+                                      {lead.contact}
+                                    </span>
+                                  </div>
+                                  {lead.description && (
+                                    <p className="text-sm text-muted-foreground mt-1">{lead.description}</p>
+                                  )}
+                                  {lead.user_id && (
+                                    <p className="text-xs text-blue-600 mt-1">
+                                      Assigned to: {managers.find(m => m.user_id === lead.user_id)?.profile?.full_name || 'Manager'}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={
+                                lead.status === 'converted' ? 'default' :
+                                lead.status === 'assigned' ? 'secondary' :
+                                lead.status === 'active' ? 'outline' : 'destructive'
+                              }>
+                                {lead.status}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewLead(lead)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditLead(lead)}
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteLead(lead)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      {leads.filter(lead => 
+                        lead.group_id === selectedLeadGroup.id &&
+                        (lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        lead.contact?.toLowerCase().includes(searchTerm.toLowerCase()))
+                      ).length === 0 && searchTerm && (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">No leads found matching your search.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {activeSidebarItem === 'call-history' && (
             <div className="space-y-6">
               <div>
@@ -2155,140 +3031,6 @@ export default function AdminDashboard() {
                 companyId={userRole?.company_id || ''} 
                 managerId={null} // null means show all calls for the company
               />
-            </div>
-          )}
-
-          {activeSidebarItem === 'performance' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Manager & Employee Performance</h2>
-                <p className="text-muted-foreground">Track performance metrics for all managers and their teams.</p>
-              </div>
-              
-              {/* Manager Performance Section */}
-              <div className="space-y-6">
-                <h3 className="text-xl font-semibold">Manager Performance</h3>
-                <div className="grid gap-6">
-                  {managers.map((manager) => {
-                    const managerEmployees = employees.filter(emp => emp.manager_id === manager.id);
-                    const managerEmployeeIds = managerEmployees.map(emp => emp.id);
-                    const managerCalls = calls.filter(call => managerEmployeeIds.includes(call.employee_id));
-                    const managerCallIds = managerCalls.map(call => call.id);
-                    const managerAnalyses = analyses.filter(analysis => managerCallIds.includes(analysis.call_id));
-                    const completedAnalyses = managerAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
-                    
-                    // Calculate manager's team stats
-                    const managerEmployeeUserIds = managerEmployees.map(emp => emp.user_id);
-                    const totalLeads = leads.filter(lead => managerEmployeeUserIds.includes(lead.assigned_to)).length;
-                    const calledLeads = [...new Set(managerCalls.map(call => call.lead_id))].length;
-                    const pendingLeads = totalLeads - calledLeads;
-                    const followUpCalls = managerCalls.filter(call => call.outcome === 'follow_up').length;
-                    const completedCalls = managerCalls.filter(call => 
-                      call.outcome === 'converted' || call.outcome === 'completed' || call.outcome === 'interested'
-                    ).length;
-                    
-                    return (
-                      <Card key={manager.id}>
-                        <CardHeader>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <CardTitle className="flex items-center gap-2">
-                                <Users className="h-5 w-5" />
-                                {manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}
-                              </CardTitle>
-                              <CardDescription>
-                                {manager.profile?.department && `Department: ${manager.profile.department}`}
-                              </CardDescription>
-                            </div>
-                            <Badge variant="secondary">Manager</Badge>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-blue-600">{totalLeads}</div>
-                              <div className="text-sm text-muted-foreground">Total Leads</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-green-600">{calledLeads}</div>
-                              <div className="text-sm text-muted-foreground">Called</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-orange-600">{pendingLeads}</div>
-                              <div className="text-sm text-muted-foreground">Pending</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-purple-600">{completedCalls}</div>
-                              <div className="text-sm text-muted-foreground">Completed</div>
-                            </div>
-                          </div>
-                          
-                          {/* Team Members */}
-                          <div className="mt-4">
-                            <h4 className="font-medium mb-2">Team Members ({managerEmployees.length})</h4>
-                            <div className="space-y-2">
-                              {managerEmployees.map((employee) => {
-                                const employeeCalls = calls.filter(call => call.employee_id === employee.id);
-                                const employeeCallIds = employeeCalls.map(call => call.id);
-                                const employeeAnalyses = analyses.filter(analysis => employeeCallIds.includes(analysis.call_id));
-                                const completedEmployeeAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
-                                
-                                const employeeLeads = leads.filter(lead => lead.assigned_to === employee.user_id);
-                                const calledEmployeeLeads = [...new Set(employeeCalls.map(call => call.lead_id))].length;
-                                const pendingEmployeeLeads = employeeLeads.length - calledEmployeeLeads;
-                                const followUpEmployeeCalls = employeeCalls.filter(call => call.outcome === 'follow_up').length;
-                                const completedEmployeeCalls = employeeCalls.filter(call => 
-                                  call.outcome === 'converted' || call.outcome === 'completed' || call.outcome === 'interested'
-                                ).length;
-                                
-                                return (
-                                  <div key={employee.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                                        <UserPlus className="h-4 w-4 text-purple-500" />
-                                      </div>
-                                      <div>
-                                        <div className="font-medium">{employee.profile?.full_name || `Employee ${employee.user_id.slice(0, 8)}`}</div>
-                                        <div className="text-sm text-muted-foreground">{employee.profile?.email}</div>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-4 text-sm">
-                                      <div className="text-center">
-                                        <div className="font-medium text-blue-600">{employeeLeads.length}</div>
-                                        <div className="text-xs text-muted-foreground">Leads</div>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="font-medium text-green-600">{calledEmployeeLeads}</div>
-                                        <div className="text-xs text-muted-foreground">Called</div>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="font-medium text-orange-600">{pendingEmployeeLeads}</div>
-                                        <div className="text-xs text-muted-foreground">Pending</div>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="font-medium text-purple-600">{completedEmployeeCalls}</div>
-                                        <div className="text-xs text-muted-foreground">Completed</div>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="font-medium text-yellow-600">{followUpEmployeeCalls}</div>
-                                        <div className="text-xs text-muted-foreground">Follow-ups</div>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="font-medium text-indigo-600">{completedEmployeeAnalyses.length}</div>
-                                        <div className="text-xs text-muted-foreground">Analyses</div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 
@@ -2849,17 +3591,44 @@ export default function AdminDashboard() {
               />
             </div>
             {addUserType === 'manager' && (
-              <div>
-                {console.log('Rendering manager department field, addUserType:', addUserType)}
-                <Label htmlFor="department">Department *</Label>
-                <Input
-                  id="department"
-                  value={newUser.department}
-                  onChange={(e) => setNewUser(prev => ({ ...prev, department: e.target.value }))}
-                  placeholder="Enter department name"
-                  required
-                />
-              </div>
+              <>
+                <div>
+                  {console.log('Rendering manager department field, addUserType:', addUserType)}
+                  <Label htmlFor="department">Department *</Label>
+                  <Select
+                    value={newUser.department}
+                    onValueChange={(value) => {
+                      setNewUser(prev => ({ ...prev, department: value }));
+                      if (value !== 'other') {
+                        setCustomDepartment('');
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <SelectItem key={dept.value} value={dept.value}>
+                          {dept.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {newUser.department === 'other' && (
+                  <div>
+                    <Label htmlFor="customDepartment">Specify Department *</Label>
+                    <Input
+                      id="customDepartment"
+                      value={customDepartment}
+                      onChange={(e) => setCustomDepartment(e.target.value)}
+                      placeholder="Enter department name"
+                      required
+                    />
+                  </div>
+                )}
+              </>
             )}
             {addUserType === 'employee' && (
               <div>
@@ -2895,10 +3664,13 @@ export default function AdminDashboard() {
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsAddUserModalOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => {
+                setIsAddUserModalOpen(false);
+                setCustomDepartment("");
+              }}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!newUser.fullName || !newUser.email || !newUser.password || (addUserType === 'manager' && !newUser.department) || (addUserType === 'employee' && !newUser.managerId)}>
+              <Button type="submit" disabled={!newUser.fullName || !newUser.email || !newUser.password || (addUserType === 'manager' && (!newUser.department || (newUser.department === 'other' && !customDepartment))) || (addUserType === 'employee' && !newUser.managerId)}>
                 Create {addUserType === 'manager' ? 'Manager' : 'Employee'}
               </Button>
             </div>
@@ -3341,43 +4113,101 @@ export default function AdminDashboard() {
                 placeholder="Enter description"
               />
             </div>
-            <div>
-              <Label htmlFor="assignedTo">Assign to Manager</Label>
-              <Select value={newLead.assignedTo} onValueChange={(value) => setNewLead(prev => ({ ...prev, assignedTo: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select manager (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">No assignment</SelectItem>
-                  {managers.map((manager) => (
-                    <SelectItem key={manager.user_id} value={manager.user_id}>
-                      {manager.profile?.full_name || manager.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="groupId">Lead Group</Label>
-              <Select value={newLead.groupId || "none"} onValueChange={(value) => setNewLead(prev => ({ ...prev, groupId: value === "none" ? "" : value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select group (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No group</SelectItem>
-                  {leadGroups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.group_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Show group selection only if not viewing from a specific group page */}
+            {isViewingGroupPage && selectedLeadGroup ? (
+              <div>
+                <Label>Lead Group</Label>
+                <div className="p-2 bg-muted rounded-md border">
+                  <p className="text-sm font-medium">{selectedLeadGroup.group_name}</p>
+                  <p className="text-xs text-muted-foreground">Adding lead to this group</p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="groupId">Lead Group</Label>
+                <Select value={newLead.groupId || "none"} onValueChange={(value) => setNewLead(prev => ({ ...prev, groupId: value === "none" ? "" : value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select group (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No group</SelectItem>
+                    {leadGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.group_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {newLead.groupId && newLead.groupId !== "none" ? (
+              (() => {
+                const selectedGroup = leadGroups.find(g => g.id === newLead.groupId);
+                const hasManagerAssigned = selectedGroup?.assigned_to;
+                const assignedManager = hasManagerAssigned ? managers.find(m => m.id === selectedGroup.assigned_to) : null;
+                
+                return hasManagerAssigned ? (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Note:</strong> This lead will be assigned based on the group's assignment to a manager.
+                      <span className="block mt-1">
+                        Group assigned to: <strong>{assignedManager?.profile?.full_name || 'Manager'}</strong>
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      <strong>⚠️ Warning:</strong> This lead group is not assigned to any manager yet.
+                      <span className="block mt-1">
+                        Please edit the group and assign it to a manager before adding leads to it.
+                      </span>
+                    </p>
+                  </div>
+                );
+              })()
+            ) : (
+              <div>
+                <Label htmlFor="assignedTo">Assign to Manager</Label>
+                <Select value={newLead.assignedTo} onValueChange={(value) => setNewLead(prev => ({ ...prev, assignedTo: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select manager (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">No assignment</SelectItem>
+                    {managers.map((manager) => (
+                      <SelectItem key={manager.user_id} value={manager.user_id}>
+                        {manager.profile?.full_name || manager.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsAddLeadModalOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => {
+                setIsAddLeadModalOpen(false);
+                // Reset form when canceling
+                setNewLead({
+                  name: "",
+                  email: "",
+                  contact: "",
+                  description: "",
+                  assignedTo: "",
+                  groupId: "",
+                });
+              }}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!newLead.name || !newLead.email || !newLead.contact}>
+              <Button type="submit" disabled={
+                !newLead.name || 
+                !newLead.email || 
+                !newLead.contact ||
+                // Disable if group is selected but not assigned to a manager
+                (newLead.groupId && newLead.groupId !== "none" && !leadGroups.find(g => g.id === newLead.groupId)?.assigned_to) ||
+                // Disable if neither group nor direct assignment is made
+                (!newLead.groupId || newLead.groupId === "none") && (!newLead.assignedTo || newLead.assignedTo === "unassigned")
+              }>
                 Add Lead
               </Button>
             </div>
@@ -3405,6 +4235,7 @@ export default function AdminDashboard() {
                   user_id: user?.id,
                   group_name: newLeadGroup.groupName,
                   company_id: userRole.company_id,
+                  assigned_to: newLeadGroup.assignedTo === "unassigned" ? null : newLeadGroup.assignedTo || null,
                 });
 
               if (error) throw error;
@@ -3416,6 +4247,7 @@ export default function AdminDashboard() {
 
               setNewLeadGroup({
                 groupName: '',
+                assignedTo: '',
               });
               setIsAddLeadGroupModalOpen(false);
               fetchUsers(); // Refresh data
@@ -3439,6 +4271,25 @@ export default function AdminDashboard() {
                   required
                 />
               </div>
+              <div>
+                <Label htmlFor="assignedTo">Assign to Manager (Optional)</Label>
+                <Select
+                  value={newLeadGroup.assignedTo}
+                  onValueChange={(value) => setNewLeadGroup(prev => ({ ...prev, assignedTo: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {managers.map((manager) => (
+                      <SelectItem key={manager.id} value={manager.id}>
+                        {manager.profile?.full_name || manager.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <Button type="button" variant="outline" onClick={() => setIsAddLeadGroupModalOpen(false)}>
@@ -3452,9 +4303,323 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Upload CSV Modal */}
-      <Dialog open={isUploadCSVModalOpen} onOpenChange={setIsUploadCSVModalOpen}>
+      {/* Edit Lead Group Modal */}
+      <Dialog open={isEditLeadGroupModalOpen} onOpenChange={setIsEditLeadGroupModalOpen}>
         <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Lead Group</DialogTitle>
+            <DialogDescription>
+              Update the lead group details.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!selectedLeadGroup) return;
+
+            try {
+              const { error } = await supabase
+                .from('lead_groups')
+                .update({
+                  group_name: selectedLeadGroup.group_name,
+                  assigned_to: selectedLeadGroup.assigned_to === "unassigned" ? null : selectedLeadGroup.assigned_to || null,
+                })
+                .eq('id', selectedLeadGroup.id);
+
+              if (error) throw error;
+
+              toast({
+                title: 'Success',
+                description: 'Lead group updated successfully!',
+              });
+
+              setIsEditLeadGroupModalOpen(false);
+              setSelectedLeadGroup(null);
+              fetchUsers(); // Refresh data
+            } catch (error: any) {
+              console.error('Error updating lead group:', error);
+              toast({
+                title: 'Error',
+                description: error.message || 'Failed to update lead group. Please try again.',
+                variant: 'destructive',
+              });
+            }
+          }}>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="editGroupName">Group Name</Label>
+                <Input
+                  id="editGroupName"
+                  value={selectedLeadGroup?.group_name || ''}
+                  onChange={(e) => setSelectedLeadGroup(prev => prev ? { ...prev, group_name: e.target.value } : null)}
+                  placeholder="Enter group name"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="editAssignedTo">Assign to Manager (Optional)</Label>
+                <Select
+                  value={selectedLeadGroup?.assigned_to || 'unassigned'}
+                  onValueChange={(value) => setSelectedLeadGroup(prev => prev ? { ...prev, assigned_to: value } : null)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {managers.map((manager) => (
+                      <SelectItem key={manager.id} value={manager.id}>
+                        {manager.profile?.full_name || manager.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <Button type="button" variant="outline" onClick={() => {
+                setIsEditLeadGroupModalOpen(false);
+                setSelectedLeadGroup(null);
+              }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!selectedLeadGroup?.group_name}>
+                Save Changes
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Lead Group Modal */}
+      <Dialog open={isViewLeadGroupModalOpen} onOpenChange={setIsViewLeadGroupModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>View Lead Group: {selectedLeadGroup?.group_name}</DialogTitle>
+            <DialogDescription>
+              View all leads in this group
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+              <div>
+                <Label className="text-muted-foreground">Group Name</Label>
+                <p className="font-medium">{selectedLeadGroup?.group_name}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Total Leads</Label>
+                <p className="font-medium">{leads.filter(lead => lead.group_id === selectedLeadGroup?.id).length}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Created</Label>
+                <p className="font-medium">{selectedLeadGroup?.created_at ? new Date(selectedLeadGroup.created_at).toLocaleDateString() : 'N/A'}</p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Assigned To</Label>
+                <p className="font-medium">
+                  {selectedLeadGroup?.assigned_to ? 
+                    managers.find(m => m.id === selectedLeadGroup.assigned_to)?.profile?.full_name || 'Manager' :
+                    'Unassigned'}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-3">Leads in this Group</h3>
+              {leads.filter(lead => lead.group_id === selectedLeadGroup?.id).length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No leads in this group yet
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {leads.filter(lead => lead.group_id === selectedLeadGroup?.id).map((lead) => (
+                    <div key={lead.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                      <div>
+                        <p className="font-medium">{lead.name}</p>
+                        <p className="text-sm text-muted-foreground">{lead.email}</p>
+                        <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                      </div>
+                      <Badge variant={
+                        lead.status === 'converted' ? 'default' :
+                        lead.status === 'assigned' ? 'secondary' :
+                        lead.status === 'active' ? 'outline' : 'destructive'
+                      }>
+                        {lead.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button type="button" onClick={() => {
+              setIsViewLeadGroupModalOpen(false);
+              setSelectedLeadGroup(null);
+            }}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lead Group Confirmation Modal */}
+      <Dialog open={isDeleteLeadGroupModalOpen} onOpenChange={setIsDeleteLeadGroupModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Lead Group
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{selectedLeadGroup?.group_name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedLeadGroup && (
+              <>
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm font-semibold text-red-900 mb-2">
+                    ⚠️ Warning: Cascading Delete
+                  </p>
+                  <p className="text-sm text-red-800">
+                    Deleting this group will also <strong>permanently delete all {leads.filter(l => l.group_id === selectedLeadGroup.id).length} lead{leads.filter(l => l.group_id === selectedLeadGroup.id).length !== 1 ? 's' : ''}</strong> in this group.
+                  </p>
+                </div>
+                {leads.filter(l => l.group_id === selectedLeadGroup.id).length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg max-h-48 overflow-y-auto">
+                    <p className="text-xs font-semibold text-amber-900 mb-2">Leads to be deleted:</p>
+                    <div className="space-y-1">
+                      {leads.filter(l => l.group_id === selectedLeadGroup.id).slice(0, 5).map(lead => (
+                        <div key={lead.id} className="text-xs bg-white p-2 rounded border">
+                          • {lead.name} - {lead.email}
+                        </div>
+                      ))}
+                      {leads.filter(l => l.group_id === selectedLeadGroup.id).length > 5 && (
+                        <p className="text-xs text-amber-700 pt-1">
+                          ...and {leads.filter(l => l.group_id === selectedLeadGroup.id).length - 5} more leads
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => {
+              setIsDeleteLeadGroupModalOpen(false);
+              setSelectedLeadGroup(null);
+            }}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteLeadGroup}>
+              Yes, Delete Group & All Leads
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lead Confirmation Modal */}
+      <Dialog open={isDeleteLeadModalOpen} onOpenChange={setIsDeleteLeadModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Lead
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{leadToDelete?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {leadToDelete && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm"><span className="font-medium">Name:</span> {leadToDelete.name}</p>
+                <p className="text-sm"><span className="font-medium">Email:</span> {leadToDelete.email}</p>
+                <p className="text-sm"><span className="font-medium">Contact:</span> {leadToDelete.contact}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => {
+              setIsDeleteLeadModalOpen(false);
+              setLeadToDelete(null);
+            }}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteLead}>
+              Yes, Delete Lead
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Dialog open={isBulkDeleteModalOpen} onOpenChange={setIsBulkDeleteModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Multiple Leads
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedLeadIds.size} lead{selectedLeadIds.size > 1 ? 's' : ''}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm font-semibold text-red-900 mb-2">
+                You are about to delete:
+              </p>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {Array.from(selectedLeadIds).slice(0, 10).map(leadId => {
+                  const lead = leads.find(l => l.id === leadId);
+                  return lead ? (
+                    <div key={leadId} className="text-xs bg-white p-2 rounded border">
+                      <p><strong>{lead.name}</strong> - {lead.email}</p>
+                    </div>
+                  ) : null;
+                })}
+                {selectedLeadIds.size > 10 && (
+                  <p className="text-xs text-red-700 pt-2">
+                    ...and {selectedLeadIds.size - 10} more leads
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm text-amber-800">
+                <strong>Warning:</strong> This will permanently delete all selected leads and cannot be undone.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => {
+              setIsBulkDeleteModalOpen(false);
+            }}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmBulkDelete}>
+              Yes, Delete {selectedLeadIds.size} Lead{selectedLeadIds.size > 1 ? 's' : ''}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload CSV Modal */}
+      <Dialog open={isUploadCSVModalOpen} onOpenChange={(open) => {
+        setIsUploadCSVModalOpen(open);
+        if (!open) {
+          // Reset when closing
+          setCsvFile(null);
+          setCsvLeads([]);
+          setCsvGroupOption('none');
+          setCsvSelectedGroupId('');
+          setCsvNewGroupName('');
+          setCsvAssignedTo('unassigned');
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Upload CSV File</DialogTitle>
             <DialogDescription>
@@ -3464,45 +4629,232 @@ export default function AdminDashboard() {
           <div className="space-y-4">
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
               <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-sm text-gray-600 mb-2">Drop your CSV file here or click to browse</p>
-              <input
-                type="file"
-                accept=".csv"
-                className="hidden"
-                id="csv-upload"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    // Handle CSV upload logic here
-                    console.log('CSV file selected:', file);
-                    toast({
-                      title: 'File Selected',
-                      description: `Selected file: ${file.name}`,
-                    });
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => document.getElementById('csv-upload')?.click()}
-              >
-                Choose File
-              </Button>
+              {csvFile ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-green-600">✓ File selected: {csvFile.name}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCsvFile(null);
+                      setCsvLeads([]);
+                    }}
+                  >
+                    Choose Different File
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 mb-2">Click to browse and select a CSV file</p>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    id="csv-upload"
+                    onChange={handleCSVFileSelect}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('csv-upload')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Choose File
+                  </Button>
+                </>
+              )}
             </div>
-            <div className="text-sm text-gray-500">
-              <p><strong>CSV Format:</strong></p>
-              <p>Name, Email, Contact, Description</p>
-              <p className="mt-2">Example:</p>
-              <p>John Doe, john@example.com, +1234567890, Interested in premium plan</p>
+
+            {csvLeads.length > 0 && (
+              <>
+                <div className="border rounded-lg p-4 bg-green-50">
+                  <h4 className="font-semibold text-sm mb-2 text-green-800">
+                    Preview: {csvLeads.length} leads found
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {csvLeads.slice(0, 5).map((lead, index) => (
+                      <div key={index} className="text-xs p-2 bg-white rounded border">
+                        <p><strong>Name:</strong> {lead.name}</p>
+                        <p><strong>Email:</strong> {lead.email}</p>
+                        <p><strong>Contact:</strong> {lead.contact}</p>
+                        {lead.description && <p><strong>Description:</strong> {lead.description}</p>}
+                      </div>
+                    ))}
+                    {csvLeads.length > 5 && (
+                      <p className="text-xs text-gray-600 text-center pt-2">
+                        ...and {csvLeads.length - 5} more leads
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Lead Group Options */}
+                <div className="border rounded-lg p-4 space-y-4">
+                  <div>
+                    <Label className="text-sm font-semibold">Lead Group (Optional)</Label>
+                    <p className="text-xs text-muted-foreground mb-3">Organize these leads into a group</p>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="csv-group-none"
+                          name="csv-group"
+                          value="none"
+                          checked={csvGroupOption === 'none'}
+                          onChange={() => setCsvGroupOption('none')}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="csv-group-none" className="font-normal cursor-pointer">
+                          No group
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="csv-group-existing"
+                          name="csv-group"
+                          value="existing"
+                          checked={csvGroupOption === 'existing'}
+                          onChange={() => setCsvGroupOption('existing')}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="csv-group-existing" className="font-normal cursor-pointer">
+                          Add to existing group
+                        </Label>
+                      </div>
+                      {csvGroupOption === 'existing' && (
+                        <div className="ml-6">
+                          <Select value={csvSelectedGroupId} onValueChange={setCsvSelectedGroupId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a group" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {leadGroups.map((group) => (
+                                <SelectItem key={group.id} value={group.id}>
+                                  {group.group_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="csv-group-new"
+                          name="csv-group"
+                          value="new"
+                          checked={csvGroupOption === 'new'}
+                          onChange={() => setCsvGroupOption('new')}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="csv-group-new" className="font-normal cursor-pointer">
+                          Create new group
+                        </Label>
+                      </div>
+                      {csvGroupOption === 'new' && (
+                        <div className="ml-6">
+                          <Input
+                            placeholder="Enter new group name"
+                            value={csvNewGroupName}
+                            onChange={(e) => setCsvNewGroupName(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Assignment Options */}
+                <div className="border rounded-lg p-4 space-y-3">
+                  <div>
+                    <Label htmlFor="csv-assign" className="text-sm font-semibold">Assign To Manager</Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      {csvGroupOption === 'new' 
+                        ? 'Assign the new group to a manager' 
+                        : csvGroupOption === 'existing'
+                        ? 'Note: Leads will be assigned based on the selected group\'s manager'
+                        : 'Directly assign these leads to a manager'}
+                    </p>
+                    {(csvGroupOption === 'none' || csvGroupOption === 'new') && (
+                      <Select value={csvAssignedTo} onValueChange={setCsvAssignedTo}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a manager" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Leave Unassigned</SelectItem>
+                          {managers.map((manager) => (
+                            <SelectItem key={manager.user_id} value={manager.user_id}>
+                              {manager.profile?.full_name || manager.full_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {csvGroupOption === 'existing' && csvSelectedGroupId && (
+                      <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                        <p className="text-xs text-blue-800">
+                          {leadGroups.find(g => g.id === csvSelectedGroupId)?.assigned_to ? (
+                            <>
+                              <strong>Assigned to:</strong> {managers.find(m => m.id === leadGroups.find(g => g.id === csvSelectedGroupId)?.assigned_to)?.profile?.full_name || 'Manager'}
+                            </>
+                          ) : (
+                            <span className="text-amber-700">⚠️ This group has no manager assigned yet</span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <p className="font-semibold text-blue-900 mb-2">Required CSV Format:</p>
+              <p className="text-blue-800">Name, Email, Contact, Description (optional)</p>
+              <p className="mt-2 text-blue-800"><strong>Example:</strong></p>
+              <code className="text-xs block bg-white p-2 rounded mt-1 text-blue-900">
+                John Doe, john@example.com, +1234567890, Interested in premium plan<br/>
+                Jane Smith, jane@example.com, +0987654321, Follow up next week
+              </code>
+              <p className="mt-2 text-xs text-blue-700">
+                ℹ️ First row can be headers (Name, Email, Contact, Description) or data - both formats supported
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-6">
-            <Button type="button" variant="outline" onClick={() => setIsUploadCSVModalOpen(false)}>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setIsUploadCSVModalOpen(false);
+                setCsvFile(null);
+                setCsvLeads([]);
+                setCsvGroupOption('none');
+                setCsvSelectedGroupId('');
+                setCsvNewGroupName('');
+                setCsvAssignedTo('unassigned');
+              }}
+            >
               Cancel
             </Button>
-            <Button type="button" disabled>
-              Upload CSV
+            <Button 
+              type="button" 
+              onClick={handleCSVUpload}
+              disabled={csvLeads.length === 0 || isUploadingCSV}
+            >
+              {isUploadingCSV ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload {csvLeads.length} Leads
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>
@@ -3678,6 +5030,39 @@ export default function AdminDashboard() {
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Out Confirmation Dialog */}
+      <Dialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirm Sign Out
+            </DialogTitle>
+            <DialogDescription className="text-base pt-2">
+              Are you sure you want to sign out? You will need to log in again to access your dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSignOutDialogOpen(false)}
+              className="font-medium"
+            >
+              No, Stay
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmSignOut}
+              className="font-medium"
+            >
+              Yes, Sign Out
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
