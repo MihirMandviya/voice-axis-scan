@@ -386,18 +386,15 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Bricspac_Logo-tr.png" 
+              alt="Bricspac" 
               className="h-5 w-auto"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
             />
             <Upload className="h-5 w-5" />
             Add New Recording
           </DialogTitle>
           <DialogDescription>
-            Add a new recording by providing the Google Drive URL and file name. The recording will be queued for analysis by <span className="font-semibold text-accent-blue">Tasknova</span> AI.
+            Add a new recording by providing the Google Drive URL and file name. The recording will be queued for analysis by <span className="font-semibold text-accent-blue">Bricspac</span> AI.
           </DialogDescription>
           
         </DialogHeader>

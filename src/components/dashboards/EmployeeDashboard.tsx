@@ -1203,11 +1203,13 @@ Please provide insights that are specific, actionable, and tailored to these met
   // Exotel API functions via Supabase Edge Function
   const initiateExotelCall = async (from: string, to: string, callerId: string) => {
     try {
-      const response = await fetch('https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/connect', {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://hueohfwgqzvwwimqakxn.supabase.co'
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZW9oZndncXp2d3dpbXFha3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MzQ5NzgsImV4cCI6MjA3ODUxMDk3OH0.v_1TKhYFXDsWlw-Z3MeiFDco3zLQETIpAQhpqyTv1Ic'
+      const response = await fetch(`${supabaseUrl}/functions/v1/exotel-proxy/calls/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify({
           from: from,
@@ -1232,11 +1234,13 @@ Please provide insights that are specific, actionable, and tailored to these met
 
   const getExotelCallDetails = async (callSid: string) => {
     try {
-      const response = await fetch(`https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/${callSid}?company_id=${userRole?.company_id}`, {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://hueohfwgqzvwwimqakxn.supabase.co'
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZW9oZndncXp2d3dpbXFha3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MzQ5NzgsImV4cCI6MjA3ODUxMDk3OH0.v_1TKhYFXDsWlw-Z3MeiFDco3zLQETIpAQhpqyTv1Ic'
+      const response = await fetch(`${supabaseUrl}/functions/v1/exotel-proxy/calls/${callSid}?company_id=${userRole?.company_id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
         },
       });
 
@@ -1619,12 +1623,9 @@ Please provide insights that are specific, actionable, and tailored to these met
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Bricspac_Logo-tr.png" 
+              alt="Bricspac" 
               className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
             />
             <div className="border-l-2 border-purple-500/30 pl-4">
               <div className="flex items-center gap-3 mb-1">

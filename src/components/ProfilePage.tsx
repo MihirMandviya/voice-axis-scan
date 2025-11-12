@@ -10,7 +10,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Edit2, Save, X, User, Building, Mail, Briefcase } from 'lucide-react';
+import { ArrowLeft, Edit2, Save, X, User, Building, Mail, Briefcase, Phone } from 'lucide-react';
+
+interface Client {
+  id: string;
+  name: string;
+  contact: string;
+  email: string;
+}
 
 interface ProfilePageProps {
   onBack: () => void;
@@ -20,6 +27,7 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -88,7 +96,29 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
 
   useEffect(() => {
     fetchProfile();
+    fetchClient();
   }, [user]);
+
+  const fetchClient = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching client:', error);
+        return;
+      }
+
+      if (data) {
+        setClient(data);
+      }
+    } catch (error) {
+      console.error('Error fetching client:', error);
+    }
+  };
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -245,6 +275,32 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Client Information */}
+            {client && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="text-lg">Client Information</CardTitle>
+                  <CardDescription>Bricspac contact details</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Building className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-semibold">{client.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span>{client.contact}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <span>{client.email}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Use Cases */}
             <Card className="mt-6">
