@@ -420,41 +420,76 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       console.log('Attempting admin login for:', email);
       
-      // First, try to sign in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Check if admin exists in admins table with correct credentials
+      const { data: admin, error: adminError } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password)
+        .eq('is_active', true)
+        .single();
 
-      if (authError) {
-        console.error('Supabase Auth error:', authError);
-        throw new Error('Invalid login credentials');
+      if (adminError || !admin) {
+        console.error('Admin not found or invalid credentials:', adminError);
+        throw new Error('Invalid admin credentials');
       }
 
-      console.log('Supabase Auth successful, checking admin role...');
-
-      // Check if this user is an admin
+      console.log('Admin found:', admin);
+      
+      // Fetch user role - specifically look for admin role
       const { data: userRoleData, error: roleError } = await supabase
         .from('user_roles')
         .select('*')
-        .eq('user_id', authData.user.id)
+        .eq('user_id', admin.user_id)
         .eq('role', 'admin')
         .eq('is_active', true)
         .single();
 
-      if (roleError || !userRoleData) {
-        console.error('Admin role not found:', roleError);
-        // Sign out from Supabase Auth since this user is not an admin
-        await supabase.auth.signOut();
-        throw new Error('Invalid admin credentials');
+      console.log('User role query result:', userRoleData);
+      console.log('User role query error:', roleError);
+
+      if (!userRoleData) {
+        console.log('No admin role found for user:', admin.user_id);
+        throw new Error('Admin role not found for this user');
       }
 
-      console.log('Admin role found:', userRoleData);
+      console.log('Set user role in context:', userRoleData);
 
-      // Set the user in the context
-      setUser(authData.user);
+      // Create a mock user object for the session
+      const mockUser = {
+        id: admin.user_id,
+        email: admin.email,
+        user_metadata: {
+          full_name: admin.full_name,
+          role: 'admin'
+        },
+        app_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        phone: admin.phone || '',
+        phone_confirmed_at: null,
+        last_sign_in_at: new Date().toISOString(),
+        role: 'authenticated',
+        factors: null,
+        identities: [],
+        email_confirmed_at: new Date().toISOString(),
+        recovery_sent_at: null,
+        new_email: null,
+        invited_at: null,
+        action_link: null,
+        email_change_sent_at: null,
+        new_phone: null,
+        phone_change_sent_at: null,
+        email_change_confirm_status: 0,
+        banned_until: null,
+        is_anonymous: false
+      } as any;
+
+      // Set the user in the context ONLY after all validations pass
+      setUser(mockUser);
       setUserRole(userRoleData);
-      console.log('Set user and role in context:', authData.user, userRoleData);
+      console.log('Set user in context:', mockUser);
 
       // Fetch company data
       let companyData = null;
@@ -477,17 +512,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       // Save session to localStorage for persistence
       const sessionData = {
-        user: authData.user,
+        user: mockUser,
         userRole: userRoleData,
         company: companyData,
-        session: authData.session,
+        session: null, // No Supabase session for custom auth
         timestamp: Date.now()
       };
       
       localStorage.setItem('custom_auth_session', JSON.stringify(sessionData));
       console.log('Saved custom session to localStorage');
 
-      return authData.user;
+      return mockUser;
     } catch (error) {
       console.error('Error signing in admin:', error);
       // Clear any existing Supabase Auth session on failure

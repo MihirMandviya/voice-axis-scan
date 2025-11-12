@@ -43,10 +43,23 @@ export default function AdminLogin({ onComplete, onBack }: AdminLoginProps) {
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!formData.email || !formData.password) {
+      toast({
+        title: 'Error',
+        description: 'Please enter both email and password.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     try {
       setLoading(true);
-      await signInAdmin(formData.email, formData.password);
-      onComplete();
+      const result = await signInAdmin(formData.email, formData.password);
+      console.log('Admin login successful, result:', result);
+      // Wait a bit for state to update in context before navigating
+      setTimeout(() => {
+        onComplete();
+      }, 200);
     } catch (error: any) {
       console.error('Admin login error:', error);
       toast({
@@ -54,7 +67,6 @@ export default function AdminLogin({ onComplete, onBack }: AdminLoginProps) {
         description: error.message || 'Failed to sign in. Please check your credentials.',
         variant: 'destructive',
       });
-    } finally {
       setLoading(false);
     }
   };

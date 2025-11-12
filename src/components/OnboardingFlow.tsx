@@ -161,7 +161,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       }
 
       toast({
-        title: 'Welcome to Tasknova!',
+        title: 'Welcome to Bricspac!',
         description: 'Your profile has been set up successfully.',
       });
 
@@ -214,7 +214,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold text-gray-900">Welcome to Tasknova!</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Welcome to Bricspac!</h1>
             <span className="text-sm text-gray-600">
               Step {currentStep + 1} of {steps.length}
             </span>

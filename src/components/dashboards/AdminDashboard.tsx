@@ -1615,12 +1615,9 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Bricspac_Logo-tr.png" 
+              alt="Bricspac" 
               className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
             />
             <div className="border-l-2 border-blue-500/30 pl-4">
               <div className="flex items-center gap-3 mb-1">

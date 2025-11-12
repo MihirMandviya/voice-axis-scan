@@ -105,16 +105,13 @@ export default function LoginOptions({ onAdminLogin, onManagerLogin, onEmployeeL
           )}
           <div className="flex items-center justify-center mb-6">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Bricspac_Logo-tr.png" 
+              alt="Bricspac" 
               className="h-12 w-auto"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
             />
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome Back to Tasknova
+            Welcome Back to Bricspac
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Choose your role to access the appropriate dashboard and features

@@ -237,16 +237,13 @@ function OriginalDashboard({ onShowProfile }: DashboardProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Bricspac_Logo-tr.png" 
+              alt="Bricspac" 
               className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
               onClick={() => navigate('/')}
             />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Tasknova Voice Analysis</h1>
+              <h1 className="text-2xl font-bold text-foreground">Bricspac Voice Analysis</h1>
               
             </div>
           </div>
