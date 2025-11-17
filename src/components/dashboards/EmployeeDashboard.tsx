@@ -106,6 +106,12 @@ import {
   Building
 } from "lucide-react";
 
+const normalizePhoneNumber = (num: string | null | undefined) => {
+  if (!num) return '';
+  const digitsOnly = num.replace(/\D/g, '');
+  return digitsOnly.replace(/^0+/, '') || digitsOnly;
+};
+
 interface Lead {
   id: string;
   name: string;
@@ -1347,6 +1353,9 @@ Please provide insights that are specific, actionable, and tailored to these met
       // So we use userRole.user_id directly
       
       // Save to the new call_history table with complete Exotel response
+      const sanitizedFrom = normalizePhoneNumber(callData.From);
+      const sanitizedTo = normalizePhoneNumber(callData.To);
+
       const callHistoryData = {
         lead_id: selectedLead.id,
         employee_id: userRole.user_id, // Fixed: Use userRole.user_id
@@ -1355,8 +1364,8 @@ Please provide insights that are specific, actionable, and tailored to these met
         notes: 'Call completed via Exotel',
         exotel_response: callData, // Store complete Exotel response as JSONB
         exotel_call_sid: callData.Sid,
-        exotel_from_number: callData.From,
-        exotel_to_number: callData.To,
+        exotel_from_number: sanitizedFrom || callData.From,
+        exotel_to_number: sanitizedTo || callData.To,
         exotel_caller_id: callData.PhoneNumberSid,
         exotel_status: callData.Status,
         exotel_duration: callData.Duration,

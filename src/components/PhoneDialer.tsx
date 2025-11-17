@@ -104,8 +104,17 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
     setPhoneNumber("");
   };
 
-  const initiateExotelCall = async (from: string, to: string, callerId: string) => {
+const normalizePhoneNumber = (num: string | null | undefined) => {
+  if (!num) return '';
+  const digitsOnly = num.replace(/\D/g, '');
+  return digitsOnly.replace(/^0+/, '') || digitsOnly;
+};
+
+const initiateExotelCall = async (from: string, to: string, callerId: string) => {
     try {
+      const normalizedFrom = normalizePhoneNumber(from);
+      const normalizedTo = normalizePhoneNumber(to);
+
       const response = await fetch('https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/connect', {
         method: 'POST',
         headers: {
@@ -114,8 +123,8 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
         },
         body: JSON.stringify({
-          from: from,
-          to: to,
+          from: normalizedFrom,
+          to: normalizedTo,
           callerId: callerId,
           company_id: userRole?.company_id,
         }),
@@ -193,6 +202,9 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
           
           // Save to call history with "Not Answered" status
           try {
+            const sanitizedFrom = normalizePhoneNumber(fromNumber);
+            const sanitizedTo = normalizePhoneNumber(phoneNumber);
+
             const { error: insertError } = await supabase.from('call_history').insert({
               employee_id: userRole?.user_id,
               company_id: userRole?.company_id,
@@ -200,8 +212,8 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
               notes: `Call was not answered by the recipient. Dialed number: ${phoneNumber}`,
               exotel_call_sid: currentCallSid,
               exotel_status: status,
-              exotel_from_number: fromNumber,
-              exotel_to_number: phoneNumber,
+              exotel_from_number: sanitizedFrom || fromNumber,
+              exotel_to_number: sanitizedTo || phoneNumber,
               exotel_caller_id: callerId,
               exotel_response: {},
             });
@@ -348,6 +360,9 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
       }
 
       // Save to call history with complete Exotel response
+      const sanitizedFrom = normalizePhoneNumber(currentCallData.From);
+      const sanitizedTo = normalizePhoneNumber(currentCallData.To);
+
       const callHistoryData = {
         lead_id: createdLeadId,
         employee_id: userRole?.user_id,
@@ -357,8 +372,8 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
         next_follow_up: nextFollowUpDateTime,
         exotel_response: currentCallData,
         exotel_call_sid: currentCallData.Sid,
-        exotel_from_number: currentCallData.From,
-        exotel_to_number: currentCallData.To,
+        exotel_from_number: sanitizedFrom || currentCallData.From,
+        exotel_to_number: sanitizedTo || currentCallData.To,
         exotel_caller_id: currentCallData.PhoneNumberSid,
         exotel_status: currentCallData.Status,
         exotel_duration: currentCallData.Duration,
