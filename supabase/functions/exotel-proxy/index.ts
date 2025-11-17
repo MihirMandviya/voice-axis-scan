@@ -69,11 +69,25 @@ serve(async (req) => {
 
     let exotelResponse;
     if (req.method === "POST" && path === "/calls/connect") {
-      const { from, to, callerId } = await req.json();
+      const { from, to } = await req.json();
+
+      // Normalize numbers to match the working curl format (strip non-digits and leading zeros)
+      const normalizeNumber = (num: string) => {
+        const digitsOnly = num.replace(/\D/g, "");
+        return digitsOnly.replace(/^0+/, "");
+      };
+
+      const normalizedFrom = normalizeNumber(from);
+      const normalizedTo = normalizeNumber(to);
+
+      // Use a fixed CallerId as per Exotel configuration / working curl
+      const FIXED_CALLER_ID = "073-146-26705";
+
       const body = new URLSearchParams({
-        From: from,
-        To: to,
-        CallerId: callerId,
+        From: normalizedFrom,
+        To: normalizedTo,
+        CallerId: FIXED_CALLER_ID,
+        Record: "true",
       });
 
       exotelResponse = await fetch(`${EXOTEL_API_BASE_URL}/Calls/connect.json`, {

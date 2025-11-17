@@ -110,6 +110,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
         },
         body: JSON.stringify({
@@ -289,6 +290,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
 
     try {
       // Create lead in database
+      // NOTE: The 'leads' table does NOT have a 'company' column, so we store it in the JSON 'other' field
       const { data: leadData, error: leadError } = await supabase
         .from('leads')
         .insert({
@@ -297,9 +299,12 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
           name: leadDetails.name,
           email: leadDetails.email || null,
           contact: phoneNumber,
-          company: leadDetails.company || null,
           status: 'contacted',
           assigned_to: userRole?.user_id,
+          // Store additional structured info here to avoid schema errors
+          other: leadDetails.company
+            ? { company: leadDetails.company }
+            : null,
         })
         .select()
         .single();

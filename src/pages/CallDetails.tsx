@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
-import { ArrowLeft, Phone, Clock, User, Calendar, FileText, Play, Download } from 'lucide-react';
+import { ArrowLeft, Phone, Clock, User, Calendar, FileText, Play, Download, RefreshCw } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
 interface CallHistoryRecord {
@@ -48,6 +48,7 @@ const CallDetails: React.FC = () => {
   const { toast } = useToast();
   const [callData, setCallData] = useState<CallHistoryRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (callId) {
@@ -82,6 +83,76 @@ const CallDetails: React.FC = () => {
       navigate('/');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshFromExotel = async () => {
+    if (!callData) return;
+
+    try {
+      setRefreshing(true);
+
+      // 1. Fetch latest call details from Exotel via Edge Function
+      const response = await fetch(
+        `https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/${callData.exotel_call_sid}?company_id=${callData.company_id}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            // Supabase Edge Functions require a valid JWT; use anon key like other callers
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const exotelData = await response.json();
+      const call = exotelData.Call || exotelData; // handle both shapes
+
+      // 2. Map Exotel response into our schema
+      const updatedFields: Partial<CallHistoryRecord> = {
+        exotel_response: call,
+        exotel_status: call.Status || call.status || callData.exotel_status,
+        exotel_recording_url: call.RecordingUrl || call.recording_url || callData.exotel_recording_url,
+        exotel_duration: call.Duration ?? call.duration ?? callData.exotel_duration,
+        exotel_start_time: call.StartTime || call.start_time || callData.exotel_start_time,
+        exotel_end_time: call.EndTime || call.end_time || callData.exotel_end_time,
+      };
+
+      // 3. Persist into Supabase
+      const { data, error } = await supabase
+        .from('call_history')
+        .update(updatedFields)
+        .eq('id', callData.id)
+        .select(`
+          *,
+          leads:lead_id(name, email, contact),
+          employees:employee_id(full_name, email)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      setCallData(data as CallHistoryRecord);
+
+      toast({
+        title: 'Refreshed',
+        description: 'Latest call details fetched from Exotel.',
+      });
+    } catch (error: any) {
+      console.error('Error refreshing from Exotel:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to refresh call details from Exotel.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -178,9 +249,21 @@ const CallDetails: React.FC = () => {
               <p className="text-gray-600">Complete call information and Exotel response</p>
             </div>
           </div>
-          <Badge className={`${getStatusColor(callData.exotel_status)} px-3 py-1`}>
-            {callData.exotel_status.toUpperCase()}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshFromExotel}
+              disabled={refreshing}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh from Exotel'}
+            </Button>
+            <Badge className={`${getStatusColor(callData.exotel_status)} px-3 py-1`}>
+              {callData.exotel_status.toUpperCase()}
+            </Badge>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

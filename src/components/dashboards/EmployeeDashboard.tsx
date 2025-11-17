@@ -1207,6 +1207,7 @@ Please provide insights that are specific, actionable, and tailored to these met
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
         },
         body: JSON.stringify({
@@ -2295,7 +2296,12 @@ Please provide insights that are specific, actionable, and tailored to these met
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2">
                                           <h4 className="font-medium">{lead.name}</h4>
-                                          {statusIndicator}
+                                          <Badge
+                                            variant={statusIndicator.variant}
+                                            className={`text-xs ${statusIndicator.color}`}
+                                          >
+                                            {statusIndicator.label}
+                                          </Badge>
                                         </div>
                                         <p className="text-sm text-muted-foreground">{lead.email}</p>
                                         <p className="text-sm text-muted-foreground">{lead.contact}</p>
