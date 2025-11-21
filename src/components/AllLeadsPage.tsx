@@ -37,8 +37,17 @@ import {
   User,
   FolderOpen,
   Upload,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Building,
+  Briefcase
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useLeads, useDeleteLead } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
 import { Lead } from "@/lib/supabase";
@@ -52,16 +61,22 @@ function AllLeadsPage() {
   const [isCsvUploadOpen, setIsCsvUploadOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
+  const [selectedClientFilter, setSelectedClientFilter] = useState<string>('all');
+  const [selectedJobFilter, setSelectedJobFilter] = useState<string>('all');
   
   const { data: leads, isLoading, error } = useLeads();
   const deleteLead = useDeleteLead();
   const { toast } = useToast();
 
-  const filteredLeads = leads?.filter(lead => 
-    lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.contact.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  const filteredLeads = leads?.filter(lead => {
+    const matchesSearch = 
+      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.contact.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesClient = selectedClientFilter === 'all' || lead.client_id === selectedClientFilter;
+    const matchesJob = selectedJobFilter === 'all' || lead.job_id === selectedJobFilter;
+    return matchesSearch && matchesClient && matchesJob;
+  }) || [];
 
   const handleDeleteLead = async (lead: Lead) => {
     try {
@@ -176,7 +191,7 @@ function AllLeadsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center space-x-2 mb-4">
+          <div className="space-y-3 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -185,6 +200,46 @@ function AllLeadsPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Select
+                value={selectedClientFilter}
+                onValueChange={setSelectedClientFilter}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by Client" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Clients</SelectItem>
+                  {Array.from(new Set(leads?.filter(l => l.clients).map(l => l.clients?.id))).map((clientId) => {
+                    const client = leads?.find(l => l.clients?.id === clientId)?.clients;
+                    return client ? (
+                      <SelectItem key={clientId} value={clientId}>
+                        {client.name}
+                      </SelectItem>
+                    ) : null;
+                  })}
+                </SelectContent>
+              </Select>
+              <Select
+                value={selectedJobFilter}
+                onValueChange={setSelectedJobFilter}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by Job" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Jobs</SelectItem>
+                  {Array.from(new Set(leads?.filter(l => l.jobs).map(l => l.jobs?.id))).map((jobId) => {
+                    const job = leads?.find(l => l.jobs?.id === jobId)?.jobs;
+                    return job ? (
+                      <SelectItem key={jobId} value={jobId}>
+                        {job.title}
+                      </SelectItem>
+                    ) : null;
+                  })}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -210,6 +265,8 @@ function AllLeadsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Contact</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Job</TableHead>
                     <TableHead>Group</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead className="w-[50px]">Actions</TableHead>
@@ -230,6 +287,24 @@ function AllLeadsPage() {
                           <Phone className="h-4 w-4 text-muted-foreground" />
                           {lead.contact}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {lead.clients ? (
+                          <Badge variant="outline" className="text-xs">
+                            {lead.clients.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {lead.jobs ? (
+                          <Badge variant="outline" className="text-xs">
+                            {lead.jobs.title}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {lead.lead_groups ? (

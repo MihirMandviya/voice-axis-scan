@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { 
   Phone, 
   PhoneCall, 
@@ -21,7 +25,8 @@ import {
   Calendar,
   Filter,
   ChevronDown,
-  Clock
+  Clock,
+  X
 } from "lucide-react";
 
 interface Call {
@@ -29,7 +34,7 @@ interface Call {
   lead_id: string;
   employee_id: string;
   company_id?: string;
-  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered' | 'failed';
+  outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'no_answer' | 'failed';
   notes: string;
   call_date: string;
   next_follow_up?: string;
@@ -91,6 +96,10 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   const [analysisFileName, setAnalysisFileName] = useState("");
   const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined,
+  });
 
   const WEBHOOK_URL = "https://n8nautomation.site/webhook/b1df7b1a-d5df-4b49-b310-4a7e26d76417";
 
@@ -216,7 +225,16 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
         setCalls(callsData || []);
       }
 
-      // Fetch all analyses for the company
+      // Fetch all employees for the company to get their user_ids for analyses query
+      const { data: allEmployees, error: empError } = await supabase
+        .from('employees')
+        .select('user_id')
+        .eq('company_id', userRole.company_id)
+        .eq('is_active', true);
+
+      const employeeUserIds = allEmployees?.map(emp => emp.user_id) || [];
+      console.log('CallHistoryManager - Employee user_ids for analyses:', employeeUserIds);
+      
       const { data: analysesData, error: analysesError } = await supabase
         .from('analyses')
         .select(`
@@ -224,10 +242,15 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           recordings (
             id,
             file_name,
-            stored_file_url
+            stored_file_url,
+            status,
+            call_history_id
           )
         `)
-        .eq('company_id', userRole.company_id);
+        .in('user_id', employeeUserIds);
+
+      console.log('CallHistoryManager - Fetched analyses:', analysesData?.length || 0);
+      console.log('CallHistoryManager - Sample analysis:', analysesData?.[0]);
 
       if (analysesError) {
         console.error('Analyses error:', analysesError);
@@ -235,13 +258,14 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
       } else {
         setAnalyses(analysesData || []);
         
-        // Remove calls from processing set if they now have completed/failed analyses
+        // Remove calls from processing set if they now have completed/failed recordings
         if (analysesData && analysesData.length > 0) {
           setProcessingCalls(prev => {
             const newSet = new Set(prev);
             analysesData.forEach(analysis => {
-              if (analysis.call_id && (analysis.status?.toLowerCase() === 'completed' || analysis.status?.toLowerCase() === 'failed')) {
-                newSet.delete(analysis.call_id);
+              const recordingStatus = analysis.recordings?.status;
+              if (analysis.recordings?.call_history_id && (recordingStatus === 'completed' || recordingStatus === 'failed')) {
+                newSet.delete(analysis.recordings.call_history_id);
               }
             });
             return newSet;
@@ -265,27 +289,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     fetchData();
   }, [userRole?.company_id]);
 
-  // More frequent auto-refresh when there are processing analyses
-  useEffect(() => {
-    if (processingCalls.size === 0) return;
-
-    const interval = setInterval(() => {
-      console.log('Auto-refreshing to check analysis status...');
-      fetchData();
-    }, 5000); // Refresh every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [processingCalls.size]);
-
-  // General periodic refresh to catch updates from other users
-  useEffect(() => {
-    const interval = setInterval(() => {
-      console.log('Periodic refresh of call history and analyses...');
-      fetchData();
-    }, 10000); // Refresh every 10 seconds
-
-    return () => clearInterval(interval);
-  }, []);
+  // Auto-refresh disabled - use manual Refresh button instead
 
   const handleViewCallDetails = (callId: string) => {
     window.open(`/call/${callId}`, '_blank');
@@ -644,13 +648,37 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
       matchesAnalysisStatus = analysis && analysis.status?.toLowerCase() === 'completed';
     } else if (selectedAnalysisStatus === "not_analyzed") {
       // Only show answered calls (completed/converted) that are not analyzed
-      // Exclude not_answered and failed calls
-      const isAnsweredCall = call.outcome !== 'not_answered' && call.outcome !== 'failed';
+      // Exclude no_answer and failed calls
+      const isAnsweredCall = call.outcome !== 'no_answer' && call.outcome !== 'failed';
       const hasNoCompletedAnalysis = !analysis || analysis.status?.toLowerCase() !== 'completed';
       matchesAnalysisStatus = isAnsweredCall && hasNoCompletedAnalysis;
     }
 
-    return matchesSearch && matchesEmployee && matchesManager && matchesOutcome && matchesAnalysisStatus;
+    // Date range filter
+    let matchesDateRange = true;
+    if (dateRange.from || dateRange.to) {
+      const callDate = new Date(call.call_date);
+      if (dateRange.from && dateRange.to) {
+        // Both dates selected - check if call date is between them
+        const fromDate = new Date(dateRange.from);
+        const toDate = new Date(dateRange.to);
+        fromDate.setHours(0, 0, 0, 0);
+        toDate.setHours(23, 59, 59, 999);
+        matchesDateRange = callDate >= fromDate && callDate <= toDate;
+      } else if (dateRange.from) {
+        // Only from date selected
+        const fromDate = new Date(dateRange.from);
+        fromDate.setHours(0, 0, 0, 0);
+        matchesDateRange = callDate >= fromDate;
+      } else if (dateRange.to) {
+        // Only to date selected
+        const toDate = new Date(dateRange.to);
+        toDate.setHours(23, 59, 59, 999);
+        matchesDateRange = callDate <= toDate;
+      }
+    }
+
+    return matchesSearch && matchesEmployee && matchesManager && matchesOutcome && matchesAnalysisStatus && matchesDateRange;
   });
 
 
@@ -782,6 +810,54 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
               />
             </div>
 
+            {/* Date Range Filter */}
+            <div className="lg:col-span-3 flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "justify-start text-left font-normal",
+                      !dateRange.from && !dateRange.to && "text-muted-foreground"
+                    )}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {dateRange.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}
+                        </>
+                      ) : (
+                        format(dateRange.from, "LLL dd, y")
+                      )
+                    ) : (
+                      <span>Filter by date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="range"
+                    selected={{ from: dateRange.from, to: dateRange.to }}
+                    onSelect={(range: any) => setDateRange({ from: range?.from, to: range?.to })}
+                    numberOfMonths={2}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {(dateRange.from || dateRange.to) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDateRange({ from: undefined, to: undefined })}
+                  className="h-9 px-2"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
             {/* Employee Filter */}
             <select
               value={selectedEmployee}
@@ -860,21 +936,22 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           ) : (
             <div className="space-y-4">
               {filteredCalls.map((call) => {
-                // Find analysis for this call using call_id
-                const analysis = analyses.find(a => a.call_id === call.id);
+                // Find analysis for this call using call_history_id from recording
+                const analysis = analyses.find(a => a.recordings?.call_history_id === call.id);
                 const hasAnalysis = !!analysis;
+                const recordingStatus = analysis?.recordings?.status;
                 const isProcessing = processingCalls.has(call.id);
                 
                 return (
                   <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center space-x-4">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        call.outcome === 'not_answered' 
+                        call.outcome === 'no_answer' 
                           ? 'bg-red-100' 
                           : 'bg-blue-100'
                       }`}>
                         <Phone className={`h-5 w-5 ${
-                          call.outcome === 'not_answered' 
+                          call.outcome === 'no_answer' 
                             ? 'text-red-600' 
                             : 'text-blue-600'
                         }`} />
@@ -891,7 +968,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                               Manager: {call.employees.managers.full_name}
                             </Badge>
                           )}
-                          {call.outcome === 'not_answered' && (
+                          {call.outcome === 'no_answer' && (
                             <Badge variant="destructive" className="text-xs">Not Answered</Badge>
                           )}
                           {(call.next_follow_up || call.outcome === 'follow_up') && (
@@ -904,31 +981,11 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                         <p className="text-sm text-muted-foreground">
                           {call.leads?.email} • {call.leads?.contact}
                         </p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {call.notes}
-                        </p>
                         <div className="flex items-center gap-4 mt-1">
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
                             {new Date(call.created_at).toLocaleDateString()}
                           </p>
-                          <Badge 
-                            variant={
-                              call.outcome === 'completed' ? 'default' :
-                              call.outcome === 'converted' ? 'default' : 
-                              call.outcome === 'interested' ? 'default' :
-                              call.outcome === 'follow_up' ? 'secondary' :
-                              'destructive'
-                            } 
-                            className={`text-xs ${
-                              call.outcome === 'completed' ? 'bg-green-500 hover:bg-green-600 text-white' :
-                              call.outcome === 'converted' ? 'bg-green-600 hover:bg-green-700 text-white' :
-                              call.outcome === 'interested' ? 'bg-blue-500 hover:bg-blue-600 text-white' :
-                              ''
-                            }`}
-                          >
-                            {call.outcome.replace('_', ' ').toUpperCase()}
-                          </Badge>
                           
                           {/* Follow-up Details Dropdown */}
                           {call.outcome === 'follow_up' && call.next_follow_up && (
@@ -945,27 +1002,31 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
-                          {isProcessing || (hasAnalysis && analysis?.status?.toLowerCase() === 'processing') ? (
+                          {isProcessing || (hasAnalysis && recordingStatus === 'processing') ? (
                             <div className="flex items-center gap-2">
                               <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                               <Badge variant="outline" className="text-xs bg-blue-50">
                                 Analyzing...
                               </Badge>
                             </div>
-                          ) : hasAnalysis && analysis?.status?.toLowerCase() === 'completed' ? (
+                          ) : hasAnalysis && recordingStatus === 'completed' ? (
                             <>
-                              <Badge variant="outline" className="text-xs">
-                                Sentiment: {analysis?.sentiment_score}%
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                Engagement: {analysis?.engagement_score}%
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs font-semibold ${
+                                  (analysis?.closure_probability || 0) >= 70 ? 'bg-green-50 text-green-700 border-green-300' :
+                                  (analysis?.closure_probability || 0) >= 40 ? 'bg-yellow-50 text-yellow-700 border-yellow-300' :
+                                  'bg-red-50 text-red-700 border-red-300'
+                                }`}
+                              >
+                                Closure Probability: {analysis?.closure_probability || 0}%
                               </Badge>
                             </>
-                          ) : hasAnalysis && analysis?.status?.toLowerCase() === 'failed' ? (
+                          ) : hasAnalysis && recordingStatus === 'failed' ? (
                             <Badge variant="destructive" className="text-xs">
                               Analysis Failed
                             </Badge>
-                          ) : hasAnalysis && analysis?.status?.toLowerCase() === 'pending' ? (
+                          ) : hasAnalysis && recordingStatus === 'pending' ? (
                             <Badge variant="outline" className="text-xs">
                               Ready for Analysis
                             </Badge>
@@ -978,7 +1039,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      {call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
+                      {call.outcome !== 'no_answer' && call.outcome !== 'failed' && (
                         <Button 
                           variant="outline" 
                           size="sm"
@@ -989,7 +1050,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           Details
                         </Button>
                       )}
-                      {hasAnalysis && analysis?.status?.toLowerCase() === 'completed' && (
+                      {hasAnalysis && recordingStatus === 'completed' && (
                         <Button 
                           variant="outline" 
                           size="sm"
@@ -1000,7 +1061,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                           View Analysis
                         </Button>
                       )}
-                      {!isProcessing && (!hasAnalysis || analysis?.status?.toLowerCase() === 'pending' || analysis?.status?.toLowerCase() === 'failed') && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
+                      {!isProcessing && (!hasAnalysis || recordingStatus === 'pending' || recordingStatus === 'failed') && call.outcome !== 'no_answer' && call.outcome !== 'failed' && (
                         <Button 
                           variant="outline" 
                           size="sm"

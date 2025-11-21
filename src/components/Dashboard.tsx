@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User, LogOut, UserPlus, FolderOpen, FileSpreadsheet } from "lucide-react";
+import { Upload, Play, Download, MoreHorizontal, TrendingUp, TrendingDown, Users, Phone, Star, AlertTriangle, Trash2, BarChart3, Loader2, User, LogOut, UserPlus, FolderOpen, FileSpreadsheet, Building2, Briefcase } from "lucide-react";
 import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } from "@/hooks/useSupabaseData";
 import AddRecordingModal from "./AddRecordingModal";
 import AllLeadsPage from "./AllLeadsPage";
@@ -317,6 +317,24 @@ function OriginalDashboard({ onShowProfile }: DashboardProps) {
               >
                 <UserPlus className="h-4 w-4" />
                 Leads
+              </Button>
+
+              {/* HR Industry Navigation */}
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start"
+                onClick={() => navigate("/clients")}
+              >
+                <Building2 className="h-4 w-4" />
+                Clients
+              </Button>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start"
+                onClick={() => navigate("/jobs")}
+              >
+                <Briefcase className="h-4 w-4" />
+                Jobs
               </Button>
               
               <Button 

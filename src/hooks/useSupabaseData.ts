@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase, Recording, Analysis, MetricsAggregate, Lead, LeadGroup } from '@/lib/supabase'
+import { supabase, Recording, Analysis, MetricsAggregate, Lead, LeadGroup, Client, Job, ManagerClientAssignment } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function useRecordings() {
@@ -349,6 +349,15 @@ export function useLeads(groupId?: string) {
           lead_groups (
             id,
             group_name
+          ),
+          clients (
+            id,
+            name
+          ),
+          jobs (
+            id,
+            title,
+            client_id
           )
         `)
         .order('created_at', { ascending: false })
@@ -377,7 +386,9 @@ export function useCreateLead() {
       contact: string; 
       description?: string; 
       other?: any; 
-      group_id?: string 
+      group_id?: string;
+      client_id?: string;
+      job_id?: string;
     }) => {
       if (!user) throw new Error('User not authenticated')
       
@@ -410,7 +421,10 @@ export function useUpdateLead() {
       contact?: string; 
       description?: string; 
       other?: any; 
-      group_id?: string 
+      group_id?: string;
+      client_id?: string;
+      job_id?: string;
+      assigned_to?: string;
     }) => {
       const { data, error } = await supabase
         .from('leads')
@@ -457,7 +471,9 @@ export function useBulkCreateLeads() {
       contact: string; 
       description?: string; 
       other?: any; 
-      group_id?: string 
+      group_id?: string;
+      client_id?: string;
+      job_id?: string;
     }>) => {
       if (!user) throw new Error('User not authenticated')
       
@@ -473,6 +489,365 @@ export function useBulkCreateLeads() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+// Clients Hooks
+export function useClients() {
+  const { user } = useAuth()
+  
+  return useQuery({
+    queryKey: ['clients', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      return data as Client[]
+    },
+    enabled: !!user
+  })
+}
+
+export function useCreateClient() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async (clientData: { 
+      name: string;
+      industry?: string;
+      contact_person?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      website?: string;
+      company_id: string;
+    }) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('clients')
+        .insert([clientData])
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Client
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
+    }
+  })
+}
+
+export function useUpdateClient() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      ...updateData 
+    }: { 
+      id: string;
+      name?: string;
+      industry?: string;
+      contact_person?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      website?: string;
+      is_active?: boolean;
+    }) => {
+      const { data, error } = await supabase
+        .from('clients')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Client
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
+    }
+  })
+}
+
+export function useDeleteClient() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', id)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    }
+  })
+}
+
+// Jobs Hooks
+export function useJobs(clientId?: string) {
+  const { user } = useAuth()
+  
+  return useQuery({
+    queryKey: ['jobs', user?.id, clientId],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
+      let query = supabase
+        .from('jobs')
+        .select(`
+          *,
+          clients (
+            id,
+            name,
+            industry
+          )
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (clientId) {
+        query = query.eq('client_id', clientId)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) throw error
+      return data as Job[]
+    },
+    enabled: !!user
+  })
+}
+
+export function useCreateJob() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async (jobData: { 
+      company_id: string;
+      client_id: string;
+      title: string;
+      description?: string;
+      location?: string;
+      employment_type?: 'full-time' | 'part-time' | 'contract' | 'internship' | 'temporary';
+      experience_level?: 'entry' | 'mid' | 'senior' | 'executive';
+      salary_range?: string;
+      requirements?: string;
+      responsibilities?: string;
+      benefits?: string;
+      positions_available?: number;
+    }) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('jobs')
+        .insert([{ ...jobData, posted_by: user.id }])
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Job
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    }
+  })
+}
+
+export function useUpdateJob() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      ...updateData 
+    }: { 
+      id: string;
+      client_id?: string;
+      title?: string;
+      description?: string;
+      location?: string;
+      employment_type?: 'full-time' | 'part-time' | 'contract' | 'internship' | 'temporary';
+      experience_level?: 'entry' | 'mid' | 'senior' | 'executive';
+      salary_range?: string;
+      requirements?: string;
+      responsibilities?: string;
+      benefits?: string;
+      status?: 'open' | 'closed' | 'on-hold' | 'filled';
+      positions_available?: number;
+      is_active?: boolean;
+    }) => {
+      const { data, error } = await supabase
+        .from('jobs')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Job
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    }
+  })
+}
+
+export function useDeleteJob() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('jobs')
+        .delete()
+        .eq('id', id)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    }
+  })
+}
+
+// Manager-Client Assignment Hooks
+export function useManagerClientAssignments(managerId?: string) {
+  const { user } = useAuth()
+  
+  return useQuery({
+    queryKey: ['manager_client_assignments', user?.id, managerId],
+    queryFn: async () => {
+      if (!user) throw new Error('User not authenticated')
+      
+      let query = supabase
+        .from('manager_client_assignments')
+        .select(`
+          *,
+          clients (
+            id,
+            name,
+            industry,
+            contact_person,
+            email
+          )
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+      
+      if (managerId) {
+        query = query.eq('manager_id', managerId)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) throw error
+      return data
+    },
+    enabled: !!user
+  })
+}
+
+// Hook to get clients assigned to a manager (returns just the client objects)
+export function useManagerClients(managerId?: string) {
+  const { data: assignments } = useManagerClientAssignments(managerId)
+  
+  return {
+    data: assignments?.map(assignment => assignment.clients).filter(Boolean) as Client[] | undefined,
+    isLoading: false
+  }
+}
+
+export function useAssignClientToManager() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async (assignmentData: { 
+      manager_id: string;
+      client_id: string;
+    }) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const { data, error } = await supabase
+        .from('manager_client_assignments')
+        .insert([{ 
+          ...assignmentData, 
+          assigned_by: user.id,
+          assigned_at: new Date().toISOString()
+        }])
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['manager_client_assignments'] })
+    }
+  })
+}
+
+export function useUnassignClientFromManager() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ manager_id, client_id }: { manager_id: string; client_id: string }) => {
+      const { error } = await supabase
+        .from('manager_client_assignments')
+        .delete()
+        .eq('manager_id', manager_id)
+        .eq('client_id', client_id)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['manager_client_assignments'] })
+    }
+  })
+}
+
+export function useBulkAssignClients() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  
+  return useMutation({
+    mutationFn: async ({ manager_id, client_ids }: { manager_id: string; client_ids: string[] }) => {
+      if (!user) throw new Error('User not authenticated')
+      
+      const assignments = client_ids.map(client_id => ({
+        manager_id,
+        client_id,
+        assigned_by: user.id,
+        assigned_at: new Date().toISOString()
+      }))
+      
+      const { data, error } = await supabase
+        .from('manager_client_assignments')
+        .insert(assignments)
+        .select()
+      
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['manager_client_assignments'] })
     }
   })
 }

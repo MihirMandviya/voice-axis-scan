@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,30 +20,55 @@ import {
   SelectValue,
   SelectSeparator,
 } from "@/components/ui/select";
-import { useCreateLead, useLeadGroups, useCreateLeadGroup } from "@/hooks/useSupabaseData";
+import { useCreateLead, useLeadGroups, useCreateLeadGroup, useClients, useJobs, useManagerClients } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
 
 interface AddLeadModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultGroupId?: string;
+  managerId?: string; // If provided, filters clients to only show those assigned to this manager
 }
 
-export default function AddLeadModal({ isOpen, onClose, defaultGroupId }: AddLeadModalProps) {
+export default function AddLeadModal({ isOpen, onClose, defaultGroupId, managerId }: AddLeadModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     contact: "",
     description: "",
     group_id: defaultGroupId || "none",
+    client_id: "none",
+    job_id: "none",
   });
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [filteredJobs, setFilteredJobs] = useState<any[]>([]);
 
   const createLead = useCreateLead();
   const createGroup = useCreateLeadGroup();
   const { data: leadGroups, refetch: refetchLeadGroups } = useLeadGroups();
+  const { data: allClients } = useClients();
+  const { data: managerClients } = useManagerClients(managerId);
+  const { data: jobs } = useJobs();
   const { toast } = useToast();
+  
+  // Use manager-filtered clients if managerId is provided, otherwise use all clients
+  const clients = managerId ? managerClients : allClients;
+
+  // Filter jobs based on selected client
+  useEffect(() => {
+    if (formData.client_id && formData.client_id !== "none") {
+      const clientJobs = jobs?.filter(job => job.client_id === formData.client_id) || [];
+      setFilteredJobs(clientJobs);
+      // Reset job_id if the selected job doesn't belong to the new client
+      if (formData.job_id !== "none" && !clientJobs.find(j => j.id === formData.job_id)) {
+        setFormData(prev => ({ ...prev, job_id: "none" }));
+      }
+    } else {
+      setFilteredJobs([]);
+      setFormData(prev => ({ ...prev, job_id: "none" }));
+    }
+  }, [formData.client_id, jobs]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +89,8 @@ export default function AddLeadModal({ isOpen, onClose, defaultGroupId }: AddLea
         contact: formData.contact.trim(),
         description: formData.description.trim() || undefined,
         group_id: formData.group_id !== "none" ? formData.group_id : undefined,
+        client_id: formData.client_id !== "none" ? formData.client_id : undefined,
+        job_id: formData.job_id !== "none" ? formData.job_id : undefined,
       });
 
       toast({
@@ -78,6 +105,8 @@ export default function AddLeadModal({ isOpen, onClose, defaultGroupId }: AddLea
         contact: "",
         description: "",
         group_id: defaultGroupId || "none",
+        client_id: "none",
+        job_id: "none",
       });
 
       onClose();
@@ -97,6 +126,8 @@ export default function AddLeadModal({ isOpen, onClose, defaultGroupId }: AddLea
       contact: "",
       description: "",
       group_id: defaultGroupId || "none",
+      client_id: "none",
+      job_id: "none",
     });
     setIsCreatingGroup(false);
     setNewGroupName("");
@@ -228,6 +259,53 @@ export default function AddLeadModal({ isOpen, onClose, defaultGroupId }: AddLea
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="client">Client</Label>
+            <Select
+              value={formData.client_id}
+              onValueChange={(value) => setFormData({ ...formData, client_id: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a client (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No client</SelectItem>
+                {clients?.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="job">Job</Label>
+            <Select
+              value={formData.job_id}
+              onValueChange={(value) => setFormData({ ...formData, job_id: value })}
+              disabled={formData.client_id === "none" || filteredJobs.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a job (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No job</SelectItem>
+                {filteredJobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>
+                    {job.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {formData.client_id === "none" && (
+              <p className="text-xs text-muted-foreground">Select a client first to choose a job</p>
+            )}
+            {formData.client_id !== "none" && filteredJobs.length === 0 && (
+              <p className="text-xs text-muted-foreground">No jobs available for this client</p>
+            )}
           </div>
 
           <DialogFooter>

@@ -352,7 +352,9 @@ export default function EmployeeDashboard() {
           recordings (
             id,
             file_name,
-            stored_file_url
+            stored_file_url,
+            status,
+            call_history_id
           )
         `)
         .eq('user_id', userRole.user_id);
@@ -367,13 +369,14 @@ export default function EmployeeDashboard() {
       } else {
         setAnalyses(analysesData || []);
         
-        // Remove calls from processing set if they now have completed/failed analyses
+        // Remove calls from processing set if they now have completed/failed recordings
         if (analysesData && analysesData.length > 0) {
           setProcessingCalls(prev => {
             const newSet = new Set(prev);
             analysesData.forEach(analysis => {
-              if (analysis.call_id && (analysis.status?.toLowerCase() === 'completed' || analysis.status?.toLowerCase() === 'failed')) {
-                newSet.delete(analysis.call_id);
+              const recordingStatus = analysis.recordings?.status;
+              if (analysis.recordings?.call_history_id && (recordingStatus === 'completed' || recordingStatus === 'failed')) {
+                newSet.delete(analysis.recordings.call_history_id);
               }
             });
             return newSet;
@@ -733,17 +736,18 @@ Please provide insights that are specific, actionable, and tailored to these met
         }
         analysis = newAnalysis;
       } else {
-        // If analysis exists but isn't processing, update its status
-        if (analysis.status !== 'processing') {
+        // If analysis exists but recording isn't processing, update recording status
+        const recordingStatus = analysis.recordings?.status;
+        if (recordingStatus !== 'processing') {
           const { error: updateError } = await supabase
-            .from('analyses')
+            .from('recordings')
             .update({ status: 'processing' })
-            .eq('id', analysis.id);
+            .eq('id', analysis.recording_id);
 
           if (updateError) {
-            console.warn('Failed to update analysis status:', updateError);
-          } else {
-            analysis.status = 'processing';
+            console.warn('Failed to update recording status:', updateError);
+          } else if (analysis.recordings) {
+            analysis.recordings.status = 'processing';
           }
         }
       }
@@ -1889,7 +1893,8 @@ Please provide insights that are specific, actionable, and tailored to these met
                   <div className="space-y-4">
                     {calls.slice(0, 3).map((call) => {
                       const lead = allLeads.find(l => l.id === call.lead_id);
-                      const analysis = analyses.find(a => a.call_id === call.id);
+                      const analysis = analyses.find(a => a.recordings?.call_history_id === call.id);
+                      const recordingStatus = analysis?.recordings?.status;
                       
                       return (
                         <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
@@ -1916,7 +1921,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                                 } className="text-xs">
                                   {call.outcome.replace('_', ' ').toUpperCase()}
                                 </Badge>
-                                {analysis && analysis.status?.toLowerCase() === 'completed' && (
+                                {analysis && recordingStatus === 'completed' && (
                                   <>
                                     <Badge variant="outline" className="text-xs">
                                       Sentiment: {analysis.sentiment_score}%
@@ -2512,9 +2517,10 @@ Please provide insights that are specific, actionable, and tailored to these met
                     ) : (
                       <div className="space-y-4">
                         {filteredCalls.map((call) => {
-                        // Find analysis for this call using call_id
-                        const analysis = analyses.find(a => a.call_id === call.id);
+                        // Find analysis for this call using call_history_id from recording
+                        const analysis = analyses.find(a => a.recordings?.call_history_id === call.id);
                         const hasAnalysis = !!analysis;
+                        const recordingStatus = analysis?.recordings?.status;
                         const isProcessing = processingCalls.has(call.id);
                         
                         return (
@@ -2554,14 +2560,14 @@ Please provide insights that are specific, actionable, and tailored to these met
                                   {new Date(call.created_at).toLocaleDateString()}
                                 </p>
                                   <div className="flex items-center gap-2 mt-1">
-                                  {isProcessing || (hasAnalysis && analysis?.status?.toLowerCase() === 'processing') ? (
+                                  {isProcessing || (hasAnalysis && recordingStatus === 'processing') ? (
                                     <div className="flex items-center gap-2">
                                       <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                                       <Badge variant="outline" className="text-xs bg-blue-50">
                                         Analyzing...
                                       </Badge>
                                     </div>
-                                  ) : hasAnalysis && analysis?.status?.toLowerCase() === 'completed' ? (
+                                  ) : hasAnalysis && recordingStatus === 'completed' ? (
                                     <>
                                       <Badge variant="outline" className="text-xs">
                                         Sentiment: {analysis?.sentiment_score}%
@@ -2570,11 +2576,11 @@ Please provide insights that are specific, actionable, and tailored to these met
                                         Engagement: {analysis?.engagement_score}%
                                       </Badge>
                                     </>
-                                  ) : hasAnalysis && analysis?.status?.toLowerCase() === 'failed' ? (
+                                  ) : hasAnalysis && recordingStatus === 'failed' ? (
                                     <Badge variant="destructive" className="text-xs">
                                       Analysis Failed
                                     </Badge>
-                                  ) : hasAnalysis && analysis?.status?.toLowerCase() === 'pending' ? (
+                                  ) : hasAnalysis && recordingStatus === 'pending' ? (
                                     <Badge variant="outline" className="text-xs">
                                       Ready for Analysis
                                     </Badge>
@@ -2587,7 +2593,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                               </div>
                             </div>
                             <div className="flex items-center space-x-2">
-                              {hasAnalysis && analysis?.status?.toLowerCase() === 'completed' && (
+                              {hasAnalysis && recordingStatus === 'completed' && (
                                 <Button 
                                   variant="outline" 
                                   size="sm"
@@ -2598,7 +2604,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                                   View Analysis
                                 </Button>
                               )}
-                              {!isProcessing && (!hasAnalysis || analysis?.status?.toLowerCase() === 'pending' || analysis?.status?.toLowerCase() === 'failed') && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
+                              {!isProcessing && (!hasAnalysis || recordingStatus === 'pending' || recordingStatus === 'failed') && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
                                 <Button 
                                   variant="outline" 
                                   size="sm"

@@ -12,6 +12,8 @@ import NotFound from "./pages/NotFound";
 import GroupPage from "./pages/GroupPage";
 import AuthCallback from "./pages/AuthCallback";
 import TestSignup from "./components/auth/TestSignup";
+import ClientsPage from "./components/ClientsPage";
+import JobsPage from "./components/JobsPage";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +32,8 @@ const App = () => (
             <Route path="/call/:callId" element={<CallDetails />} />
             <Route path="/call-details" element={<CallDetail />} />
             <Route path="/group/:groupId" element={<GroupPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/jobs" element={<JobsPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
