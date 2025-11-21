@@ -119,6 +119,7 @@ export default function ManagerDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const { data: allLeads, isLoading: leadsLoading } = useLeads(); // Use React Query hook
   const [assignedClients, setAssignedClients] = useState<any[]>([]); // Only clients assigned to this manager
+  const [jobs, setJobs] = useState<any[]>([]);
   const [leadGroups, setLeadGroups] = useState<any[]>([]);
   const [clientOverviewFilter, setClientOverviewFilter] = useState<string>('all');
   const [calls, setCalls] = useState<Call[]>([]);
@@ -153,6 +154,9 @@ export default function ManagerDashboard() {
   });
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
+  const [dateRangeFilter, setDateRangeFilter] = useState<'today' | 'week' | 'month' | 'custom'>('week');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [createdEmployeeCredentials, setCreatedEmployeeCredentials] = useState<{email: string, password: string, fullName: string} | null>(null);
@@ -182,6 +186,44 @@ export default function ManagerDashboard() {
       fetchData();
     }
   }, [userRole, company]);
+
+  // Helper function to check if a date is within the selected range
+  const isDateInRange = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    
+    switch (dateRangeFilter) {
+      case 'today':
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const itemDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        return itemDate.getTime() === today.getTime();
+      
+      case 'week':
+        const weekAgo = new Date(now);
+        weekAgo.setDate(now.getDate() - 7);
+        return date >= weekAgo && date <= now;
+      
+      case 'month':
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(now.getMonth() - 1);
+        return date >= monthAgo && date <= now;
+      
+      case 'custom':
+        if (!customStartDate || !customEndDate) return true;
+        const start = new Date(customStartDate);
+        const end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999); // Include the entire end date
+        return date >= start && date <= end;
+      
+      default:
+        return true;
+    }
+  };
+
+  // Filter data based on date range for overview tab
+  const dateFilteredCallOutcomes = callOutcomes.filter(outcome => isDateInRange(outcome.call_date || outcome.created_at));
+  const dateFilteredCalls = calls.filter(call => isDateInRange(call.created_at));
+  const dateFilteredAnalyses = analyses.filter(analysis => isDateInRange(analysis.created_at));
 
   const fetchData = async () => {
     if (!userRole?.company_id) return;
@@ -215,6 +257,25 @@ export default function ManagerDashboard() {
       } else {
         const clients = clientAssignmentsData?.map(assignment => assignment.clients).filter(Boolean) || [];
         setAssignedClients(clients);
+      }
+
+      // Fetch jobs for assigned clients
+      if (clientAssignmentsData && clientAssignmentsData.length > 0) {
+        const clientIds = clientAssignmentsData.map(assignment => assignment.client_id);
+        const { data: jobsData, error: jobsError } = await supabase
+          .from('jobs')
+          .select('*, clients(*)')
+          .in('client_id', clientIds)
+          .eq('is_active', true);
+
+        if (jobsError) {
+          console.error('Jobs error:', jobsError);
+          setJobs([]);
+        } else {
+          setJobs(jobsData || []);
+        }
+      } else {
+        setJobs([]);
       }
 
       // Fetch employees under this manager
@@ -997,6 +1058,62 @@ export default function ManagerDashboard() {
               <TabsTrigger value="jobs">Jobs</TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-6">
+              {/* Date Range Filter */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <Label className="font-semibold">Time Period:</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button 
+                        variant={dateRangeFilter === 'today' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setDateRangeFilter('today')}
+                      >
+                        Today
+                      </Button>
+                      <Button 
+                        variant={dateRangeFilter === 'week' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setDateRangeFilter('week')}
+                      >
+                        This Week
+                      </Button>
+                      <Button 
+                        variant={dateRangeFilter === 'month' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setDateRangeFilter('month')}
+                      >
+                        This Month
+                      </Button>
+                      <Button 
+                        variant={dateRangeFilter === 'custom' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setDateRangeFilter('custom')}
+                      >
+                        Custom Range
+                      </Button>
+                    </div>
+                    {dateRangeFilter === 'custom' && (
+                      <div className="flex items-center gap-2">
+                        <Input 
+                          type="date" 
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="w-40"
+                        />
+                        <span>to</span>
+                        <Input 
+                          type="date" 
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="w-40"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Top Metrics Row */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {/* Total Open Positions */}
@@ -1020,7 +1137,7 @@ export default function ManagerDashboard() {
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <div className="text-4xl font-bold">
-                      {analyses.filter(a => (a.closure_probability || 0) >= 85).length}
+                      {dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 85).length}
                     </div>
                     <p className="text-sm text-muted-foreground mt-2">High Closure (85%+)</p>
                   </CardContent>
@@ -1030,7 +1147,7 @@ export default function ManagerDashboard() {
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <div className="text-4xl font-bold">
-                      {analyses.filter(a => {
+                      {dateFilteredAnalyses.filter(a => {
                         const risk = parseFloat(a.candidate_acceptance_risk) || 0;
                         return risk >= 40;
                       }).length}
@@ -1057,7 +1174,7 @@ export default function ManagerDashboard() {
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <div className="text-4xl font-bold">
-                      {callOutcomes.filter(c => c.outcome === 'no_answer').length}
+                      {dateFilteredCallOutcomes.filter(c => c.outcome === 'no_answer').length}
                     </div>
                     <p className="text-sm text-muted-foreground mt-2">Missed Calls</p>
                   </CardContent>
@@ -1067,8 +1184,8 @@ export default function ManagerDashboard() {
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <div className="text-4xl font-bold">
-                      {analyses.filter(a => (a.closure_probability || 0) < 40).length + 
-                       analyses.filter(a => {
+                      {dateFilteredAnalyses.filter(a => (a.closure_probability || 0) < 40).length + 
+                       dateFilteredAnalyses.filter(a => {
                          const risk = a.candidate_acceptance_risk?.toLowerCase() || '';
                          return risk.includes('high') || risk.includes('critical');
                        }).length}
@@ -1117,8 +1234,8 @@ export default function ManagerDashboard() {
                                 conversionsMap.set(index + 1, { day, conversions: 0 }); // index + 1 because Monday is day 1
                               });
                               
-                              // Filter call outcomes by completed status and client
-                              const completedOutcomes = callOutcomes.filter(co => {
+                              // Filter call outcomes by completed status and client with date filter
+                              const completedOutcomes = dateFilteredCallOutcomes.filter(co => {
                                 if (co.outcome !== 'completed') return false;
                                 
                                 // Find the lead for this call outcome
@@ -1212,7 +1329,7 @@ export default function ManagerDashboard() {
                           </thead>
                           <tbody>
                             {employees.map((emp) => {
-                              const empCallOutcomes = callOutcomes.filter(c => c.employee_id === emp.id);
+                              const empCallOutcomes = dateFilteredCallOutcomes.filter(c => c.employee_id === emp.id);
                               const completedCalls = empCallOutcomes.filter(c => c.outcome === 'completed');
                               const missedCalls = empCallOutcomes.filter(c => c.outcome === 'no_answer');
                               const rate = empCallOutcomes.length > 0 ? Math.round((completedCalls.length / empCallOutcomes.length) * 100) : 0;
@@ -1227,6 +1344,22 @@ export default function ManagerDashboard() {
                                 </tr>
                               );
                             })}
+                            {employees.length > 0 && (() => {
+                              const totalCalls = dateFilteredCallOutcomes.length;
+                              const totalCompleted = dateFilteredCallOutcomes.filter(c => c.outcome === 'completed').length;
+                              const totalMissed = dateFilteredCallOutcomes.filter(c => c.outcome === 'no_answer').length;
+                              const totalRate = totalCalls > 0 ? Math.round((totalCompleted / totalCalls) * 100) : 0;
+                              
+                              return (
+                                <tr className="border-t-2 font-bold bg-muted/30">
+                                  <td className="py-3 px-2">Total</td>
+                                  <td className="text-right py-3 px-2">{totalCalls}</td>
+                                  <td className="text-right py-3 px-2">{totalCompleted}</td>
+                                  <td className="text-right py-3 px-2">{totalMissed}</td>
+                                  <td className="text-right py-3 px-2">{totalRate}%</td>
+                                </tr>
+                              );
+                            })()}
                             {employees.length === 0 && (
                               <tr>
                                 <td colSpan={5} className="text-center py-8 text-muted-foreground">
@@ -1252,24 +1385,24 @@ export default function ManagerDashboard() {
                       <div className="space-y-3">
                         <div className="flex justify-between items-center py-2 border-b">
                           <span className="text-sm font-medium">Total Candidates</span>
-                          <span className="text-lg font-bold">{callOutcomes.length}</span>
+                          <span className="text-lg font-bold">{dateFilteredCallOutcomes.length}</span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b">
                           <span className="text-sm font-medium">Converted</span>
                           <span className="text-lg font-bold text-green-600">
-                            {callOutcomes.filter(c => c.outcome === 'completed').length}
+                            {dateFilteredCallOutcomes.filter(c => c.outcome === 'completed').length}
                           </span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b">
                           <span className="text-sm font-medium">Pending</span>
                           <span className="text-lg font-bold text-orange-600">
-                            {callOutcomes.filter(c => c.outcome === 'follow_up').length}
+                            {dateFilteredCallOutcomes.filter(c => c.outcome === 'follow_up').length}
                           </span>
                         </div>
                         <div className="flex justify-between items-center py-2">
                           <span className="text-sm font-medium">Rejected</span>
                           <span className="text-lg font-bold text-red-600">
-                            {callOutcomes.filter(c => c.outcome === 'not_interested').length}
+                            {dateFilteredCallOutcomes.filter(c => c.outcome === 'not_interested').length}
                           </span>
                         </div>
                       </div>
@@ -1282,67 +1415,124 @@ export default function ManagerDashboard() {
                       <CardTitle>Missed Calls Tracking</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        <div>
-                          <div className="text-5xl font-bold">
-                            {callOutcomes.length > 0 ? Math.round((callOutcomes.filter(c => c.outcome === 'no_answer').length / callOutcomes.length) * 100) : 0}%
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">Missed calls</p>
-                          <p className="text-sm text-muted-foreground">{callOutcomes.filter(c => c.outcome === 'no_answer').length} employees</p>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <span className="text-sm font-medium">Total Calls</span>
+                          <span className="text-lg font-bold">{dateFilteredCalls.length}</span>
                         </div>
-                        <div className="space-y-2">
-                          {employees.slice(0, 3).map((emp) => {
-                            const empMissedCalls = callOutcomes.filter(c => c.employee_id === emp.id && c.outcome === 'no_answer').length;
-                            return empMissedCalls > 0 ? (
-                              <div key={emp.id} className="flex items-center justify-between text-sm">
-                                <span>{empMissedCalls} {emp.full_name}</span>
-                              </div>
-                            ) : null;
-                          })}
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <span className="text-sm font-medium">Answered</span>
+                          <span className="text-lg font-bold text-green-600">
+                            {dateFilteredCalls.filter(c => c.outcome && c.outcome !== 'no_answer').length}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b">
+                          <span className="text-sm font-medium">Not Answered</span>
+                          <span className="text-lg font-bold text-orange-600">
+                            {dateFilteredCalls.filter(c => c.outcome === 'no_answer').length}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm font-medium">Missed</span>
+                          <span className="text-lg font-bold text-red-600">
+                            {dateFilteredCalls.filter(c => c.outcome === 'no_answer').length}
+                          </span>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-
-                  {/* Alerts & Actions */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Alerts & Actions</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-2 text-sm">
-                        {analyses.filter(a => (a.closure_probability || 0) < 40).length > 0 && (
-                          <li className="flex items-start gap-2">
-                            <span>•</span>
-                            <span>Follow up with overdue candidates ({analyses.filter(a => (a.closure_probability || 0) < 40).length})</span>
-                          </li>
-                        )}
-                        {analyses.filter(a => {
-                          const risk = a.candidate_acceptance_risk?.toLowerCase() || '';
-                          return risk.includes('high') || risk.includes('critical');
-                        }).length > 0 && (
-                          <li className="flex items-start gap-2">
-                            <span>•</span>
-                            <span>Review recovery processes</span>
-                          </li>
-                        )}
-                        {employees.filter(emp => {
-                          const empCallOutcomes = callOutcomes.filter(c => c.employee_id === emp.id);
-                          const missedRate = empCallOutcomes.length > 0 ? (empCallOutcomes.filter(c => c.outcome === 'no_answer').length / empCallOutcomes.length) : 0;
-                          return missedRate > 0.3;
-                        }).map(emp => (
-                          <li key={emp.id} className="flex items-start gap-2">
-                            <span>•</span>
-                            <span>Check in with {emp.full_name}</span>
-                          </li>
-                        ))}
-                        {analyses.length === 0 && callOutcomes.length === 0 && (
-                          <li className="text-muted-foreground">No alerts at this time</li>
-                        )}
-                      </ul>
-                    </CardContent>
-                  </Card>
                 </div>
+              </div>
+
+              {/* Client Performance Section */}
+              <div className="mt-8">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Client Performance</CardTitle>
+                    <CardDescription>Openings and conversion rates by client</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 px-4 font-medium">Company</th>
+                            <th className="text-right py-3 px-4 font-medium">Total Openings</th>
+                            <th className="text-right py-3 px-4 font-medium">Filled</th>
+                            <th className="text-right py-3 px-4 font-medium">Remaining</th>
+                            <th className="text-right py-3 px-4 font-medium">Conversion %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {assignedClients.map(client => {
+                            // Get all jobs for this client
+                            const clientJobs = jobs.filter(j => j.client_id === client.id);
+                            const totalOpenings = clientJobs.reduce((sum, job) => sum + (job.positions_available || 0), 0);
+                            
+                            // Get conversions for this client
+                            const clientLeads = allLeads?.filter(l => l.client_id === client.id) || [];
+                            const clientLeadIds = clientLeads.map(l => l.id);
+                            const clientConversions = dateFilteredCallOutcomes.filter(c => 
+                              clientLeadIds.includes(c.lead_id) && c.outcome === 'completed'
+                            ).length;
+                            
+                            const remaining = totalOpenings - clientConversions;
+                            const conversionPercentage = totalOpenings > 0 
+                              ? ((clientConversions / totalOpenings) * 100).toFixed(1)
+                              : '0.0';
+                            
+                            return (
+                              <tr key={client.id} className="border-b hover:bg-muted/50">
+                                <td className="py-3 px-4 font-medium">{client.name}</td>
+                                <td className="text-right py-3 px-4">{totalOpenings}</td>
+                                <td className="text-right py-3 px-4 text-green-600 font-medium">{clientConversions}</td>
+                                <td className="text-right py-3 px-4 text-orange-600">{remaining}</td>
+                                <td className="text-right py-3 px-4">
+                                  <Badge variant={parseFloat(conversionPercentage) >= 50 ? "default" : "secondary"}>
+                                    {conversionPercentage}%
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {assignedClients.length > 0 && (() => {
+                            // Calculate totals across all clients
+                            const grandTotalOpenings = jobs.reduce((sum, job) => sum + (job.positions_available || 0), 0);
+                            const allClientLeadIds = allLeads?.filter(l => assignedClients.some(c => c.id === l.client_id)).map(l => l.id) || [];
+                            const grandTotalFilled = dateFilteredCallOutcomes.filter(c => 
+                              allClientLeadIds.includes(c.lead_id) && c.outcome === 'completed'
+                            ).length;
+                            const grandTotalRemaining = grandTotalOpenings - grandTotalFilled;
+                            const grandTotalPercentage = grandTotalOpenings > 0 
+                              ? ((grandTotalFilled / grandTotalOpenings) * 100).toFixed(1)
+                              : '0.0';
+                            
+                            return (
+                              <tr className="border-t-2 font-bold bg-muted/30">
+                                <td className="py-3 px-4">Total</td>
+                                <td className="text-right py-3 px-4">{grandTotalOpenings}</td>
+                                <td className="text-right py-3 px-4 text-green-600">{grandTotalFilled}</td>
+                                <td className="text-right py-3 px-4 text-orange-600">{grandTotalRemaining}</td>
+                                <td className="text-right py-3 px-4">
+                                  <Badge variant={parseFloat(grandTotalPercentage) >= 50 ? "default" : "secondary"}>
+                                    {grandTotalPercentage}%
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })()}
+                          {assignedClients.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                                No clients assigned
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
 
