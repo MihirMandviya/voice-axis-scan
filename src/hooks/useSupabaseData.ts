@@ -394,7 +394,7 @@ export function useCreateLead() {
       
       const { data, error } = await supabase
         .from('leads')
-        .insert([{ ...leadData, user_id: user.id }])
+        .insert([{ ...leadData, user_id: user.id, status: 'contacted' }])
         .select()
         .single()
       
@@ -477,7 +477,7 @@ export function useBulkCreateLeads() {
     }>) => {
       if (!user) throw new Error('User not authenticated')
       
-      const leadsWithUserId = leadsData.map(lead => ({ ...lead, user_id: user.id }))
+      const leadsWithUserId = leadsData.map(lead => ({ ...lead, user_id: user.id, status: 'contacted' }))
       
       const { data, error } = await supabase
         .from('leads')

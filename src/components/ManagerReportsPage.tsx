@@ -186,7 +186,7 @@ export default function ManagerReportsPage() {
           total_calls: employeeCalls.length,
           completed_calls: employeeCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length,
           follow_up_calls: employeeCalls.filter(c => c.outcome === 'follow_up').length,
-          not_interested: employeeCalls.filter(c => c.outcome === 'not_interested').length,
+          not_interested: employeeCalls.filter(c => c.outcome === 'not_interested' || c.outcome === 'rejected').length,
           not_answered: employeeCalls.filter(c => c.outcome === 'not_answered').length,
           conversion_rate: employeeCalls.length > 0 ? 
             ((employeeCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / employeeCalls.length) * 100).toFixed(1) : 0,

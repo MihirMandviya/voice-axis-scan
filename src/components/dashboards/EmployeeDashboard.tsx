@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import EmployeeProfilePage from "@/components/EmployeeProfilePage";
 import EmployeeReportsPage from "@/components/EmployeeReportsPage";
@@ -103,7 +104,8 @@ import {
   FileText,
   Clock,
   Users,
-  Building
+  Building,
+  BarChart
 } from "lucide-react";
 
 const normalizePhoneNumber = (num: string | null | undefined) => {
@@ -140,6 +142,10 @@ interface Call {
   exotel_recording_url?: string;
   exotel_call_sid?: string;
   exotel_response?: any;
+  exotel_duration?: number;
+  exotel_start_time?: string;
+  exotel_end_time?: string;
+  exotel_answered_by?: string;
   leads?: {
     name: string;
     email: string;
@@ -176,6 +182,7 @@ export default function EmployeeDashboard() {
   const [leadGroups, setLeadGroups] = useState<any[]>([]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [dailyProductivity, setDailyProductivity] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLeadsSection, setSelectedLeadsSection] = useState<'all' | 'followup' | 'completed'>('all');
   const [leadsSection, setLeadsSection] = useState<'leads' | 'groups'>('leads');
@@ -194,10 +201,14 @@ export default function EmployeeDashboard() {
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [callOutcome, setCallOutcome] = useState("");
-  const [callOutcomeStatus, setCallOutcomeStatus] = useState<'follow_up' | 'completed' | 'not_interested'>('follow_up');
+  const [callOutcomeStatus, setCallOutcomeStatus] = useState<'rejected' | 'converted' | 'follow_up' | 'not_answered'>('follow_up');
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [autoCallFollowup, setAutoCallFollowup] = useState(false);
+  const [selectedClient, setSelectedClient] = useState("");
+  const [selectedJob, setSelectedJob] = useState("");
+  const [clients, setClients] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
   const [selectedCallDetails, setSelectedCallDetails] = useState<Call | null>(null);
   const [nextFollowUpTime, setNextFollowUpTime] = useState("");
@@ -268,80 +279,162 @@ export default function EmployeeDashboard() {
       setLoading(true);
       }
 
-      // Fetch leads assigned to this employee
-      const { data: leadsData, error: leadsError } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('assigned_to', userRole.user_id);
+      // Declare leadsDataArray at function scope so it's accessible in calls processing
+      let leadsDataArray: any[] = [];
 
-      if (leadsError) {
-        console.error('Leads error:', leadsError);
-        setAllLeads([]);
-        setFollowUpLeads([]);
-        setCompletedLeads([]);
-      } else {
-        const leadsDataArray = leadsData || [];
-        console.log('EmployeeDashboard - Fetched leads:', leadsDataArray.length, leadsDataArray);
-        // Categorize leads into 3 sections (exclude removed leads)
-        const activeLeadsArray = leadsDataArray.filter(lead => lead.status !== 'removed');
-        const allLeadsArray = activeLeadsArray; // Show ALL active leads in All Leads section
-        const followUpLeadsArray = activeLeadsArray.filter(lead => 
-          lead.status === 'contacted' || lead.status === 'follow_up'
-        );
-        const completedLeadsArray = activeLeadsArray.filter(lead => 
-          lead.status === 'converted' || lead.status === 'completed'
-        );
-        
-        console.log('EmployeeDashboard - Categorized leads:', {
-          all: allLeadsArray.length,
-          followUp: followUpLeadsArray.length,
-          completed: completedLeadsArray.length
-        });
-        
-        setAllLeads(allLeadsArray);
-        setFollowUpLeads(followUpLeadsArray);
-        setCompletedLeads(completedLeadsArray);
-
-        // Fetch lead groups that have leads assigned to this employee
-        const leadGroupIds = [...new Set(leadsDataArray.map(lead => lead.group_id).filter(Boolean))];
-        if (leadGroupIds.length > 0) {
-          const { data: leadGroupsData, error: leadGroupsError } = await supabase
-            .from('lead_groups')
-            .select('*')
-            .in('id', leadGroupIds);
-
-          if (leadGroupsError) {
-            console.error('Lead groups error:', leadGroupsError);
-            setLeadGroups([]);
-          } else {
-            setLeadGroups(leadGroupsData || []);
-          }
-        } else {
-          setLeadGroups([]);
-        }
-      }
-
-      // Fetch calls made by this employee from call_history table
+      // STEP 1: First fetch all calls made by this employee from call_history table
       // Note: employee_id in call_history references employees.user_id (not employees.id)
       const { data: callsData, error: callsError } = await supabase
         .from('call_history')
-        .select(`
-          *,
-          leads (
-            name,
-            email,
-            contact
-          )
-        `)
+        .select('*')
         .eq('employee_id', userRole.user_id)
         .order('created_at', { ascending: false });
 
       if (callsError) {
         console.error('Calls error:', callsError);
         setCalls([]);
+        setAllLeads([]);
+        setFollowUpLeads([]);
+        setCompletedLeads([]);
+        return;
+      }
+
+      console.log('EmployeeDashboard - Fetched calls:', callsData?.length || 0, callsData);
+
+      // STEP 2: Get all unique lead IDs from the calls
+      const calledLeadIds = [...new Set(callsData?.map(c => c.lead_id).filter(Boolean) || [])];
+      console.log('EmployeeDashboard - Unique leads called:', calledLeadIds.length);
+
+      // STEP 3: Fetch ALL leads that have been called by this employee (not just assigned)
+      if (calledLeadIds.length > 0) {
+        const { data: leadsData, error: leadsError } = await supabase
+          .from('leads')
+          .select('*')
+          .in('id', calledLeadIds);
+
+        if (leadsError) {
+          console.error('Leads error:', leadsError);
+          setAllLeads([]);
+          setFollowUpLeads([]);
+          setCompletedLeads([]);
+        } else {
+          leadsDataArray = leadsData || [];
+          console.log('EmployeeDashboard - Fetched leads:', leadsDataArray.length, leadsDataArray);
+          
+          // Log status distribution for debugging
+          const statusCounts = leadsDataArray.reduce((acc, lead) => {
+            const status = lead.status || 'null';
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+          console.log('EmployeeDashboard - Lead status distribution:', statusCounts);
+
+          // Fetch lead groups that have leads called by this employee
+          const leadGroupIds = [...new Set(leadsDataArray.map(lead => lead.group_id).filter(Boolean))];
+          if (leadGroupIds.length > 0) {
+            const { data: leadGroupsData, error: leadGroupsError } = await supabase
+              .from('lead_groups')
+              .select('*')
+              .in('id', leadGroupIds);
+
+            if (leadGroupsError) {
+              console.error('Lead groups error:', leadGroupsError);
+              setLeadGroups([]);
+            } else {
+              setLeadGroups(leadGroupsData || []);
+            }
+          } else {
+            setLeadGroups([]);
+          }
+        }
       } else {
-        console.log('EmployeeDashboard - Fetched calls:', callsData?.length || 0, callsData);
-        setCalls(callsData || []);
+        // No calls, no leads
+        leadsDataArray = [];
+        setLeadGroups([]);
+      }
+
+      // STEP 4: Create leads map for call merging
+      let leadsMap = new Map();
+      leadsDataArray.forEach(lead => leadsMap.set(lead.id, lead));
+
+      // STEP 5: Fetch call outcomes separately (for backward compatibility with old data)
+      // Note: call_outcomes.employee_id references employees.id, but we have userRole.user_id (employees.user_id)
+      // So we need to first get the employee.id
+      const { data: employeeData } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('user_id', userRole.user_id)
+        .single();
+
+      const { data: outcomesData, error: outcomesError } = await supabase
+        .from('call_outcomes')
+        .select('lead_id, outcome')
+        .eq('employee_id', employeeData?.id || '');
+
+      // STEP 6: Merge call outcomes and leads with call history
+      const mergedCalls = callsData?.map(call => {
+        const outcome = outcomesData?.find(o => o.lead_id === call.lead_id);
+        const lead = leadsMap.get(call.lead_id);
+        return {
+          ...call,
+          leads: lead || null, // Add lead data if available
+          call_outcomes: outcome ? [{ outcome: outcome.outcome }] : []
+        };
+      }) || [];
+      
+      // Log outcome distribution for debugging
+      const outcomeCounts = mergedCalls.reduce((acc, call) => {
+        const outcome = call.call_outcomes?.[0]?.outcome || call.outcome || 'null';
+        acc[outcome] = (acc[outcome] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log('EmployeeDashboard - Call outcome distribution:', outcomeCounts);
+      
+      setCalls(mergedCalls);
+      
+      // STEP 7: Create lead entries from calls (show all calls, not just unique leads)
+      // This matches the Call History page - showing 51 follow-up calls, not 36 unique leads
+      if (leadsDataArray && mergedCalls) {
+        // Filter out removed leads
+        const activeLeadIds = new Set(
+          leadsDataArray.filter(lead => lead.status !== 'removed').map(l => l.id)
+        );
+        
+        // Create lead entries from calls (one entry per call)
+        const allCallsWithLeads = mergedCalls
+          .filter(call => call.lead_id && activeLeadIds.has(call.lead_id))
+          .map(call => ({
+            ...leadsMap.get(call.lead_id),
+            call_id: call.id,
+            call_created_at: call.created_at,
+            call_outcome: call.outcome
+          }));
+        
+        // Filter by outcome to show all follow-up CALLS (51), not unique leads (36)
+        const followUpCallsArray = allCallsWithLeads.filter(entry => 
+          entry.call_outcome === 'follow_up'
+        );
+        
+        // Filter by outcome to show all converted CALLS
+        const completedCallsArray = allCallsWithLeads.filter(entry => 
+          entry.call_outcome === 'converted'
+        );
+        
+        // For "All" tab, show unique leads (no duplicates)
+        const uniqueLeadIds = new Set(allCallsWithLeads.map(e => e.id));
+        const allLeadsArray = Array.from(uniqueLeadIds)
+          .map(id => leadsMap.get(id))
+          .filter(Boolean);
+        
+        console.log('EmployeeDashboard - Categorized leads by call outcomes:', {
+          all: allLeadsArray.length,
+          followUpCalls: followUpCallsArray.length,
+          completedCalls: completedCallsArray.length
+        });
+        
+        setAllLeads(allLeadsArray);
+        setFollowUpLeads(followUpCallsArray);
+        setCompletedLeads(completedCallsArray);
       }
 
       // Fetch analyses for recordings made by this employee
@@ -381,6 +474,25 @@ export default function EmployeeDashboard() {
             });
             return newSet;
           });
+        }
+      }
+
+      // Fetch daily productivity data for current week
+      if (employeeData?.id) {
+        const { data: productivityData, error: productivityError } = await supabase
+          .from('employee_daily_productivity')
+          .select('*')
+          .eq('employee_id', employeeData.id)
+          .gte('date', '2025-11-24')
+          .lte('date', '2025-11-28')
+          .order('date', { ascending: true });
+
+        if (productivityError) {
+          console.error('Daily productivity error:', productivityError);
+          setDailyProductivity([]);
+        } else {
+          setDailyProductivity(productivityData || []);
+          console.log('EmployeeDashboard - Daily productivity data:', productivityData);
         }
       }
 
@@ -1127,44 +1239,34 @@ Please provide insights that are specific, actionable, and tailored to these met
     }
 
     try {
-      // First, get the employee ID from the employees table
-      const { data: employeeData, error: employeeError } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', userRole?.user_id)
-        .single();
-
-      if (employeeError || !employeeData) {
-        throw new Error('Employee not found');
+      // Validate converted call has client and job selected
+      if (callOutcomeStatus === 'converted') {
+        if (!selectedClient || !selectedJob) {
+          toast({
+            title: 'Validation Error',
+            description: 'Please select both Client and Job for converted calls.',
+            variant: 'destructive',
+          });
+          return;
+        }
       }
 
-      // Prepare next follow-up datetime
-      let nextFollowUpDateTime = null;
+      // Prepare next follow-up date
+      let nextFollowUpDate_value = null;
       if (callOutcomeStatus === 'follow_up' && nextFollowUpDate && nextFollowUpTime) {
-        nextFollowUpDateTime = new Date(`${nextFollowUpDate}T${nextFollowUpTime}`).toISOString();
+        nextFollowUpDate_value = new Date(`${nextFollowUpDate}T${nextFollowUpTime}`);
       }
 
-      // Automatically set lead status based on call outcome
-      let newLeadStatus = 'contacted';
-      if (callOutcomeStatus === 'completed') {
-        newLeadStatus = 'converted';
-      } else if (callOutcomeStatus === 'not_interested') {
-        newLeadStatus = 'not_interested';
-      } else if (callOutcomeStatus === 'follow_up') {
-        newLeadStatus = 'follow_up';
-      }
-
-      // Save the call to the database
+      // Save the call to call_history table
       const { data: call, error: callError } = await supabase
-        .from('call_outcomes')
+        .from('call_history')
         .insert({
           lead_id: selectedLead.id,
-          employee_id: employeeData.id,
+          employee_id: userRole?.user_id,
           company_id: userRole?.company_id,
           outcome: callOutcomeStatus,
           notes: callOutcome.trim(),
-          call_date: new Date().toISOString(),
-          next_follow_up: nextFollowUpDateTime,
+          next_follow_up: nextFollowUpDate_value,
           created_at: new Date().toISOString()
         })
         .select()
@@ -1172,13 +1274,42 @@ Please provide insights that are specific, actionable, and tailored to these met
 
       if (callError) throw callError;
 
-      // Update the lead status
+      // Save to call_outcomes table as well for disposition tracking
+      const { data: employeeData } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('user_id', userRole?.user_id)
+        .single();
+
+      if (employeeData) {
+        await supabase.from('call_outcomes').insert({
+          lead_id: selectedLead.id,
+          employee_id: employeeData.id,
+          company_id: userRole?.company_id,
+          outcome: callOutcomeStatus,
+          notes: callOutcome.trim(),
+          call_date: new Date().toISOString(),
+          next_follow_up: nextFollowUpDate_value,
+          created_at: new Date().toISOString()
+        });
+      }
+
+      // Update the lead status and client/job for converted calls
+      const leadUpdateData: any = {
+        status: callOutcomeStatus === 'converted' ? 'converted' : 
+                callOutcomeStatus === 'follow_up' ? 'follow_up' : 
+                callOutcomeStatus === 'rejected' ? 'not_interested' : 'contacted',
+        updated_at: new Date().toISOString()
+      };
+
+      if (callOutcomeStatus === 'converted' && selectedClient && selectedJob) {
+        leadUpdateData.client_id = selectedClient;
+        // You can add job_id if the leads table has this field
+      }
+
       const { error: leadError } = await supabase
         .from('leads')
-        .update({ 
-          status: newLeadStatus,
-          updated_at: new Date().toISOString()
-        })
+        .update(leadUpdateData)
         .eq('id', selectedLead.id);
 
       if (leadError) {
@@ -1195,6 +1326,8 @@ Please provide insights that are specific, actionable, and tailored to these met
       setCallOutcomeStatus('follow_up');
       setNextFollowUpDate("");
       setNextFollowUpTime("");
+      setSelectedClient("");
+      setSelectedJob("");
       setSelectedLead(null);
       setIsCallModalOpen(false);
       
@@ -1689,6 +1822,14 @@ Please provide insights that are specific, actionable, and tailored to these met
               Overview
             </Button>
             <Button 
+              variant={selectedTab === "productivity" ? "accent" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setSelectedTab("productivity")}
+            >
+              <BarChart className="h-4 w-4" />
+              Productivity Dashboard
+            </Button>
+            <Button 
               variant={selectedTab === "leads" ? "accent" : "ghost"} 
               className="w-full justify-start"
               onClick={() => setSelectedTab("leads")}
@@ -1703,14 +1844,6 @@ Please provide insights that are specific, actionable, and tailored to these met
             >
               <PhoneCall className="h-4 w-4" />
               Call History
-            </Button>
-            <Button 
-              variant={selectedTab === "analytics" ? "accent" : "ghost"} 
-              className="w-full justify-start"
-              onClick={() => setSelectedTab("analytics")}
-            >
-              <BarChart3 className="h-4 w-4" />
-              Performance
             </Button>
             <Button 
               variant={selectedTab === "reports" ? "accent" : "ghost"} 
@@ -1735,217 +1868,593 @@ Please provide insights that are specific, actionable, and tailored to these met
         <main className="flex-1 p-6">
           <Tabs value={selectedTab} onValueChange={setSelectedTab}>
             <TabsContent value="overview" className="space-y-6">
-              {/* Call Quality Stats Section */}
-                <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Call Quality Stats
-                  </CardTitle>
-                  <CardDescription>Analysis metrics and call performance indicators</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {(() => {
-                          // Filter analyses for calls made by this employee
-                          const employeeCallIds = calls.map(c => c.id);
-                          const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
-                          const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
-                          const avgSentiment = completedAnalyses.length > 0 
-                            ? Math.round(completedAnalyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / completedAnalyses.length)
-                            : 0;
-                          return avgSentiment;
-                        })()}%
-                      </div>
-                      <p className="text-sm text-blue-600 font-medium">Avg Sentiment Score</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
-                        {(() => {
-                          // Filter analyses for calls made by this employee
-                          const employeeCallIds = calls.map(c => c.id);
-                          const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
-                          const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
-                          const avgConfidence = completedAnalyses.length > 0 
-                            ? Math.round(completedAnalyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / completedAnalyses.length)
-                            : 0;
-                          return `${avgConfidence}/10`;
-                        })()}
-                      </div>
-                      <p className="text-sm text-green-600 font-medium">Avg Confidence Score</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {(() => {
-                          // Filter analyses for calls made by this employee
-                          const employeeCallIds = calls.map(c => c.id);
-                          const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
-                          const completedAnalyses = employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed');
-                          const avgEngagement = completedAnalyses.length > 0 
-                            ? Math.round(completedAnalyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / completedAnalyses.length)
-                            : 0;
-                          return avgEngagement;
-                        })()}%
-                    </div>
-                      <p className="text-sm text-purple-600 font-medium">Avg Engagement Score</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-orange-50 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {(() => {
-                          // Filter analyses for calls made by this employee
-                          const employeeCallIds = calls.map(c => c.id);
-                          const employeeAnalyses = analyses.filter(a => employeeCallIds.includes(a.call_id));
-                          return employeeAnalyses.filter(a => a.status?.toLowerCase() === 'completed').length;
-                        })()}
-                      </div>
-                      <p className="text-sm text-orange-600 font-medium">Completed Analyses</p>
-                    </div>
-                  </div>
-                  </CardContent>
-                </Card>
+              {/* Quick Stats */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4">Overview</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100">
+                    <CardContent className="p-6">
+                      <div className="text-4xl font-bold text-blue-900 mb-2">{allLeads.length}</div>
+                      <div className="text-sm text-blue-700 font-medium">Total Leads</div>
+                    </CardContent>
+                  </Card>
 
-              {/* Leads Stats Section */}
-                <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Phone className="h-5 w-5" />
-                    Leads Stats
-                  </CardTitle>
-                  <CardDescription>Lead management and call activity metrics</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-gray-50 rounded-lg">
-                      <div className="text-2xl font-bold text-gray-700">
-                        {/* allLeads already contains all leads assigned to this employee */}
-                        {allLeads.length}
-                      </div>
-                      <p className="text-sm text-gray-600 font-medium">Total Leads</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {/* Count only calls for leads assigned to this employee */}
-                        {(() => {
-                          const assignedLeadIds = [...allLeads, ...followUpLeads, ...completedLeads].map(l => l.id);
-                          return calls.filter(c => assignedLeadIds.includes(c.lead_id)).length;
-                        })()}
-                      </div>
-                      <p className="text-sm text-blue-600 font-medium">Total Called</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
-                        {/* completedLeads is already filtered by current employee */}
-                        {completedLeads.length}
-                      </div>
-                      <p className="text-sm text-green-600 font-medium">Total Completed</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {/* Count only leads that haven't been called yet */}
+                  <Card className="bg-gradient-to-br from-green-50 to-green-100">
+                    <CardContent className="p-6">
+                      <div className="text-4xl font-bold text-green-900 mb-2">{completedLeads.length}</div>
+                      <div className="text-sm text-green-700 font-medium">Completed</div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100">
+                    <CardContent className="p-6">
+                      <div className="text-4xl font-bold text-yellow-900 mb-2">{followUpLeads.length}</div>
+                      <div className="text-sm text-yellow-700 font-medium">Follow-Ups</div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100">
+                    <CardContent className="p-6">
+                      <div className="text-4xl font-bold text-purple-900 mb-2">
                         {(() => {
                           const calledLeadIds = calls.map(c => c.lead_id);
                           return allLeads.filter(lead => !calledLeadIds.includes(lead.id)).length;
                         })()}
                       </div>
-                      <p className="text-sm text-yellow-600 font-medium">Pending Calls</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-orange-50 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {/* followUpLeads is already filtered by current employee */}
-                        {followUpLeads.length}
-                      </div>
-                      <p className="text-sm text-orange-600 font-medium">Follow-ups Remaining</p>
-                    </div>
-                    
-                    <div className="text-center p-4 bg-red-50 rounded-lg">
-                      <div className="text-2xl font-bold text-red-600">
+                      <div className="text-sm text-purple-700 font-medium">Pending</div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* My Lead Pipeline */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">My Lead Pipeline</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <Card className="bg-gray-50">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-gray-900 mb-2">
                         {(() => {
-                          // Count only calls for leads assigned to this employee
-                          const assignedLeadIds = [...allLeads, ...followUpLeads, ...completedLeads].map(l => l.id);
-                          const notInterestedCalls = calls.filter(c => 
-                            c.outcome === 'not_interested' && assignedLeadIds.includes(c.lead_id)
-                          );
-                          return notInterestedCalls.length;
+                          const calledLeadIds = calls.map(c => c.lead_id);
+                          return allLeads.filter(lead => !calledLeadIds.includes(lead.id)).length;
                         })()}
                       </div>
-                      <p className="text-sm text-red-600 font-medium">Not Interested</p>
-                    </div>
-                  </div>
-                  </CardContent>
-                </Card>
+                      <p className="text-sm text-muted-foreground">New Leads</p>
+                    </CardContent>
+                  </Card>
 
-              {/* Recent Activity */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Your latest calls (most recent 3)</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {calls.slice(0, 3).map((call) => {
-                      const lead = allLeads.find(l => l.id === call.lead_id);
-                      const analysis = analyses.find(a => a.recordings?.call_history_id === call.id);
-                      const recordingStatus = analysis?.recordings?.status;
-                      
-                      return (
-                        <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <PhoneCall className="h-4 w-4 text-blue-600" />
-                              <p className="font-medium">
-                                Called {lead ? lead.name : 'Unknown Lead'}
+                  <Card className="bg-purple-50">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-purple-900 mb-2">{calls.length}</div>
+                      <p className="text-sm text-muted-foreground">Called</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-blue-50">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-blue-900 mb-2">{followUpLeads.length}</div>
+                      <p className="text-sm text-muted-foreground">Follow-Up Scheduled</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-green-50">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-green-900 mb-2">
+                        {calls.filter(c => c.outcome === 'converted').length}
+                      </div>
+                      <p className="text-sm text-muted-foreground">Converted</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Recent Calls */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Recent Calls</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {calls.slice(0, 6).map((call) => {
+                    const lead = allLeads.find(l => l.id === call.lead_id) || 
+                                followUpLeads.find(l => l.id === call.lead_id) ||
+                                completedLeads.find(l => l.id === call.lead_id);
+                    
+                    return (
+                      <Card key={call.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="pt-6">
+                          <div className="flex items-start gap-3">
+                            <PhoneCall className="h-5 w-5 text-blue-600 flex-shrink-0 mt-1" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-base truncate mb-1">
+                                {lead ? lead.name : 'Unknown Lead'}
                               </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-sm text-muted-foreground">
-                                📞 {lead ? lead.contact : 'N/A'}
+                              <p className="text-sm text-muted-foreground truncate mb-3">
+                                {lead ? lead.contact : 'N/A'}
                               </p>
-                              <p className="text-sm text-muted-foreground">
-                                🕐 {new Date(call.created_at).toLocaleString()}
-                              </p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <Badge variant={
-                                  call.outcome === 'completed' || call.outcome === 'converted' ? 'default' : 
+                              <Badge 
+                                variant={
+                                  call.outcome === 'converted' ? 'default' :
                                   call.outcome === 'follow_up' ? 'secondary' :
-                                  call.outcome === 'not_interested' ? 'destructive' :
+                                  call.outcome === 'not_answered' ? 'outline' :
+                                  call.outcome === 'rejected' ? 'destructive' :
                                   'outline'
-                                } className="text-xs">
-                                  {call.outcome.replace('_', ' ').toUpperCase()}
-                                </Badge>
-                                {analysis && recordingStatus === 'completed' && (
+                                }
+                                className="text-xs"
+                              >
+                                {call.outcome === 'converted' ? 'Converted' :
+                                 call.outcome === 'follow_up' ? 'Follow Up' :
+                                 call.outcome === 'not_answered' ? 'Missed' :
+                                 call.outcome === 'rejected' ? 'Rejected' :
+                                 'Called'}
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                  {calls.length === 0 && (
+                    <Card className="col-span-full">
+                      <CardContent className="py-12 text-center">
+                        <PhoneCall className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm text-muted-foreground">No recent calls</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="productivity" className="space-y-6">
+              {/* Productivity Dashboard */}
+              <div>
+                <h2 className="text-2xl font-bold mb-6">Productivity Dashboard</h2>
+                
+                {/* Key Metrics Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-blue-900 mb-2">
+                        {analyses.length}
+                      </div>
+                      <p className="text-sm text-blue-700 font-medium">Total Profiles Downloaded</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-purple-900 mb-2">
+                        {calls.length}
+                      </div>
+                      <p className="text-sm text-purple-700 font-medium">Total Calls Made</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-green-50 to-green-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-green-900 mb-2">
+                        {calls.filter(c => c.outcome === 'converted').length}
+                      </div>
+                      <p className="text-sm text-green-700 font-medium">Total Converted</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-orange-50 to-orange-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-orange-900 mb-2">
+                        {(() => {
+                          // Calculate Productivity Score
+                          const profilesDownloaded = analyses.length;
+                          const callsMade = calls.length;
+                          const converted = calls.filter(c => c.outcome === 'converted').length;
+                          const followUps = calls.filter(c => c.outcome === 'follow_up').length;
+                          
+                          // Scoring formula
+                          let score = 0;
+                          if (callsMade > 0) {
+                            const conversionRate = (converted / callsMade) * 100;
+                            const profileUtilization = profilesDownloaded > 0 ? (callsMade / profilesDownloaded) * 100 : 0;
+                            const followUpRate = (followUps / callsMade) * 100;
+                            
+                            // Weighted average: 40% conversion, 30% calls, 30% profile utilization
+                            score = (conversionRate * 0.4) + (Math.min(profileUtilization, 100) * 0.3) + (followUpRate * 0.3);
+                          }
+                          
+                          return Math.round(score);
+                        })()}
+                      </div>
+                      <p className="text-sm text-orange-700 font-medium">Productivity Score</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-cyan-900 mb-2">
+                        {(() => {
+                          // Calculate Average Talk Time from exotel_duration column
+                          const callsWithDuration = calls.filter(c => c.exotel_duration && c.exotel_duration > 0);
+                          if (callsWithDuration.length === 0) return '0:00';
+                          
+                          const totalDuration = callsWithDuration.reduce((sum, call) => {
+                            return sum + (call.exotel_duration || 0);
+                          }, 0);
+                          
+                          const avgDuration = Math.round(totalDuration / callsWithDuration.length);
+                          const minutes = Math.floor(avgDuration / 60);
+                          const seconds = avgDuration % 60;
+                          
+                          return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-cyan-700 font-medium">Avg. Talk Time</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-indigo-900 mb-2">
+                        {(() => {
+                          // Calculate Average Work Hours from daily productivity data
+                          if (dailyProductivity.length === 0) return '0.0h';
+                          
+                          const totalHours = dailyProductivity.reduce((sum, dp) => {
+                            return sum + (parseFloat(dp.work_hours) || 0);
+                          }, 0);
+                          
+                          const avgHours = (totalHours / dailyProductivity.length).toFixed(1);
+                          return `${avgHours}h`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-indigo-700 font-medium">Avg. Work Hours</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-emerald-900 mb-2">
+                        {(() => {
+                          // Get today's login time
+                          const today = '2025-11-24'; // Current date
+                          const todayData = dailyProductivity.find(dp => dp.date === today);
+                          
+                          if (!todayData || !todayData.login_time) return '--:--';
+                          
+                          // Format time to remove seconds for cleaner display
+                          const time = todayData.login_time.substring(0, 5);
+                          return time;
+                        })()}
+                      </div>
+                      <p className="text-sm text-emerald-700 font-medium">Today's Login</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-teal-50 to-teal-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-teal-900 mb-2">
+                        {(() => {
+                          // Calculate Average Login Time
+                          if (dailyProductivity.length === 0) return '--:--';
+                          
+                          const loginTimes = dailyProductivity.filter(dp => dp.login_time);
+                          if (loginTimes.length === 0) return '--:--';
+                          
+                          // Convert times to minutes for averaging
+                          const totalMinutes = loginTimes.reduce((sum, dp) => {
+                            const [hours, minutes] = dp.login_time.split(':').map(Number);
+                            return sum + (hours * 60 + minutes);
+                          }, 0);
+                          
+                          const avgMinutes = Math.round(totalMinutes / loginTimes.length);
+                          const avgHours = Math.floor(avgMinutes / 60);
+                          const avgMins = avgMinutes % 60;
+                          
+                          return `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-teal-700 font-medium">Avg. Login Time</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-violet-50 to-violet-100">
+                    <CardContent className="pt-6 text-center">
+                      <div className="text-4xl font-bold text-violet-900 mb-2">
+                        {(() => {
+                          // Calculate Average Logout Time
+                          if (dailyProductivity.length === 0) return '--:--';
+                          
+                          const logoutTimes = dailyProductivity.filter(dp => dp.logout_time);
+                          if (logoutTimes.length === 0) return '--:--';
+                          
+                          // Convert times to minutes for averaging
+                          const totalMinutes = logoutTimes.reduce((sum, dp) => {
+                            const [hours, minutes] = dp.logout_time.split(':').map(Number);
+                            return sum + (hours * 60 + minutes);
+                          }, 0);
+                          
+                          const avgMinutes = Math.round(totalMinutes / logoutTimes.length);
+                          const avgHours = Math.floor(avgMinutes / 60);
+                          const avgMins = avgMinutes % 60;
+                          
+                          return `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-violet-700 font-medium">Avg. Logout Time</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Detailed Metrics */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                  {/* Productivity Breakdown */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Productivity Breakdown</CardTitle>
+                      <CardDescription>How your score is calculated</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <span className="text-sm font-medium">Conversion Rate</span>
+                            <span className="text-xs text-muted-foreground ml-2">(Weight: 40%)</span>
+                          </div>
+                          <span className="text-sm font-bold">
+                            {calls.length > 0 
+                              ? ((calls.filter(c => c.outcome === 'converted').length / calls.length) * 100).toFixed(1)
+                              : 0}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-green-600 h-2 rounded-full transition-all" 
+                            style={{ 
+                              width: `${calls.length > 0 
+                                ? ((calls.filter(c => c.outcome === 'converted').length / calls.length) * 100)
+                                : 0}%` 
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <span className="text-sm font-medium">Profile Utilization</span>
+                            <span className="text-xs text-muted-foreground ml-2">(Weight: 30%)</span>
+                          </div>
+                          <span className="text-sm font-bold">
+                            {analyses.length > 0 
+                              ? Math.min((calls.length / analyses.length) * 100, 100).toFixed(1)
+                              : 0}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all" 
+                            style={{ 
+                              width: `${analyses.length > 0 
+                                ? Math.min((calls.length / analyses.length) * 100, 100)
+                                : 0}%` 
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <span className="text-sm font-medium">Follow-up Rate</span>
+                            <span className="text-xs text-muted-foreground ml-2">(Weight: 30%)</span>
+                          </div>
+                          <span className="text-sm font-bold">
+                            {calls.length > 0 
+                              ? ((calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100).toFixed(1)
+                              : 0}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-purple-600 h-2 rounded-full transition-all" 
+                            style={{ 
+                              width: `${calls.length > 0 
+                                ? ((calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100)
+                                : 0}%` 
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 mt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <span className="text-sm font-medium">Average Work Hours</span>
+                          </div>
+                          <span className="text-sm font-bold">
+                            {(() => {
+                              if (dailyProductivity.length === 0) return '0.0h';
+                              
+                              const totalHours = dailyProductivity.reduce((sum, dp) => {
+                                return sum + (parseFloat(dp.work_hours) || 0);
+                              }, 0);
+                              
+                              const avgHours = (totalHours / dailyProductivity.length).toFixed(1);
+                              return `${avgHours}h`;
+                            })()}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-indigo-600 h-2 rounded-full transition-all" 
+                            style={{ 
+                              width: `${(() => {
+                                if (dailyProductivity.length === 0) return 0;
+                                
+                                const totalHours = dailyProductivity.reduce((sum, dp) => {
+                                  return sum + (parseFloat(dp.work_hours) || 0);
+                                }, 0);
+                                
+                                const avgHours = totalHours / dailyProductivity.length;
+                                // Show as percentage of 8 hours (standard workday)
+                                return Math.min((avgHours / 8) * 100, 100);
+                              })()}%` 
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Last 7 Days Productivity Score */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Last 7 Days Productivity Score</CardTitle>
+                      <CardDescription>Your daily productivity trend</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-64 flex items-end justify-between gap-2">
+                        {(() => {
+                          // Current week: Monday Nov 24 to Friday Nov 28, 2025
+                          const weekDays = [
+                            { date: '2025-11-24', day: 'Mon' },
+                            { date: '2025-11-25', day: 'Tue' },
+                            { date: '2025-11-26', day: 'Wed' },
+                            { date: '2025-11-27', day: 'Thu' },
+                            { date: '2025-11-28', day: 'Fri' }
+                          ];
+                          
+                          // Use data from database table if available, otherwise calculate
+                          const weekData = weekDays.map(dayInfo => {
+                            // Try to find data from the database
+                            const dbData = dailyProductivity.find(dp => dp.date === dayInfo.date);
+                            
+                            if (dbData) {
+                              // Use database data
+                              return {
+                                date: dayInfo.date,
+                                day: dayInfo.day,
+                                score: Math.round(parseFloat(dbData.productivity_score) || 0),
+                                profilesDownloaded: dbData.profiles_downloaded,
+                                callsMade: dbData.calls_made,
+                                loginTime: dbData.login_time,
+                                logoutTime: dbData.logout_time,
+                                workHours: dbData.work_hours ? parseFloat(dbData.work_hours).toFixed(1) : null
+                              };
+                            } else {
+                              // Fallback: calculate from calls and analyses
+                              const dayCallsFiltered = calls.filter(c => {
+                                const callDate = new Date(c.created_at).toISOString().split('T')[0];
+                                return callDate === dayInfo.date;
+                              });
+                              
+                              const dayAnalysesFiltered = analyses.filter(a => {
+                                const analysisDate = new Date(a.created_at).toISOString().split('T')[0];
+                                return analysisDate === dayInfo.date;
+                              });
+                              
+                              const dayConverted = dayCallsFiltered.filter(c => c.outcome === 'converted').length;
+                              const dayFollowUps = dayCallsFiltered.filter(c => c.outcome === 'follow_up').length;
+                              
+                              let dayScore = 0;
+                              if (dayCallsFiltered.length > 0) {
+                                const conversionRate = (dayConverted / dayCallsFiltered.length) * 100;
+                                const profileUtilization = dayAnalysesFiltered.length > 0 
+                                  ? (dayCallsFiltered.length / dayAnalysesFiltered.length) * 100 
+                                  : 0;
+                                const followUpRate = (dayFollowUps / dayCallsFiltered.length) * 100;
+                                
+                                dayScore = (conversionRate * 0.4) + (Math.min(profileUtilization, 100) * 0.3) + (followUpRate * 0.3);
+                              }
+                              
+                              return {
+                                date: dayInfo.date,
+                                day: dayInfo.day,
+                                score: Math.round(dayScore),
+                                profilesDownloaded: dayAnalysesFiltered.length,
+                                callsMade: dayCallsFiltered.length,
+                                loginTime: null,
+                                logoutTime: null,
+                                workHours: null
+                              };
+                            }
+                          });
+                          
+                          return weekData.map((day, idx) => (
+                            <div key={idx} className="flex-1 flex flex-col justify-end h-full group relative">
+                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 text-white text-xs rounded px-3 py-2 whitespace-nowrap pointer-events-none z-10">
+                                <div className="font-bold mb-1">Score: {day.score}</div>
+                                <div>Profiles: {day.profilesDownloaded || 0}</div>
+                                <div>Calls: {day.callsMade || 0}</div>
+                                {day.loginTime && (
                                   <>
-                                    <Badge variant="outline" className="text-xs">
-                                      Sentiment: {analysis.sentiment_score}%
-                                    </Badge>
-                                    <Badge variant="outline" className="text-xs">
-                                      Engagement: {analysis.engagement_score}%
-                                    </Badge>
+                                    <div className="mt-1 pt-1 border-t border-gray-700">Login: {day.loginTime}</div>
+                                    <div>Logout: {day.logoutTime}</div>
+                                    <div>Hours: {day.workHours}h</div>
                                   </>
                                 )}
                               </div>
+                              <div 
+                                className="bg-gradient-to-t from-blue-600 to-blue-400 rounded-t transition-all hover:from-blue-700 hover:to-blue-500 cursor-pointer"
+                                style={{ height: `${day.score}%` }}
+                              ></div>
+                              <div className="text-center mt-2">
+                                <span className="text-xs font-medium">{day.day}</span>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {calls.length === 0 && (
-                      <div className="text-center py-8">
-                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">No recent activity</p>
+                          ));
+                        })()}
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Additional Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Avg Calls per Day</p>
+                          <p className="text-2xl font-bold">
+                            {(() => {
+                              const uniqueDays = new Set(calls.map(c => new Date(c.created_at).toISOString().split('T')[0]));
+                              return uniqueDays.size > 0 ? (calls.length / uniqueDays.size).toFixed(1) : 0;
+                            })()}
+                          </p>
+                        </div>
+                        <PhoneCall className="h-8 w-8 text-blue-600" />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Success Rate</p>
+                          <p className="text-2xl font-bold text-green-600">
+                            {calls.length > 0 
+                              ? ((calls.filter(c => c.outcome === 'converted').length / calls.length) * 100).toFixed(1)
+                              : 0}%
+                          </p>
+                        </div>
+                        <TrendingUp className="h-8 w-8 text-green-600" />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Pending Follow-ups</p>
+                          <p className="text-2xl font-bold text-orange-600">
+                            {calls.filter(c => c.outcome === 'follow_up').length}
+                          </p>
+                        </div>
+                        <Clock className="h-8 w-8 text-orange-600" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent value="leads" className="space-y-6">
@@ -2400,60 +2909,98 @@ Please provide insights that are specific, actionable, and tailored to these met
             </TabsContent>
 
             <TabsContent value="calls" className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Call History</h2>
-                <p className="text-muted-foreground">Your call records and outcomes</p>
+              {/* Header with Filters */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Call History</h2>
+                </div>
+                <Select value={callDateFilter} onValueChange={setCallDateFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Last 30 days" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 days</SelectItem>
+                    <SelectItem value="month">Last 30 days</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Filters */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Filters</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label>Call Outcome</Label>
-                      <Select value={callOutcomeFilter} onValueChange={setCallOutcomeFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All Outcomes" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Outcomes</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="follow_up">Follow-up</SelectItem>
-                          <SelectItem value="not_interested">Not Interested</SelectItem>
-                          <SelectItem value="not_answered">Not Answered</SelectItem>
-                          <SelectItem value="converted">Converted</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Date Range</Label>
-                      <Select value={callDateFilter} onValueChange={setCallDateFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All Time" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Time</SelectItem>
-                          <SelectItem value="today">Today</SelectItem>
-                          <SelectItem value="week">This Week</SelectItem>
-                          <SelectItem value="month">This Month</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Filter Tabs */}
+              <div className="border-b">
+                <div className="flex space-x-8">
+                  <button
+                    onClick={() => setCallOutcomeFilter('all')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'all'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    All ({calls.length})
+                  </button>
+                  <button
+                    onClick={() => setCallOutcomeFilter('converted')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'converted'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Converted ({calls.filter(c => c.outcome === 'converted').length})
+                  </button>
+                  <button
+                    onClick={() => setCallOutcomeFilter('not_answered')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'not_answered'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Not Answered ({calls.filter(c => c.outcome === 'not_answered').length})
+                  </button>
+                  <button
+                    onClick={() => setCallOutcomeFilter('follow_up')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'follow_up'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Follow-up ({calls.filter(c => c.outcome === 'follow_up').length})
+                  </button>
+                  <button
+                    onClick={() => setCallOutcomeFilter('rejected')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'rejected'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Rejected ({calls.filter(c => c.outcome === 'rejected').length})
+                  </button>
+                </div>
+              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    All Calls ({(() => {
+              {/* Table */}
+              <div className="bg-white rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="font-semibold">Name</TableHead>
+                      <TableHead className="font-semibold">Phone</TableHead>
+                      <TableHead className="font-semibold">Date</TableHead>
+                      <TableHead className="font-semibold">Disposition</TableHead>
+                      <TableHead className="font-semibold">Agent</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
                       // Filter calls based on filters
                       let filteredCalls = calls;
 
-                      // Filter by outcome
+                      // Filter by outcome from call_history table
                       if (callOutcomeFilter !== 'all') {
                         filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
                       }
@@ -2465,579 +3012,94 @@ Please provide insights that are specific, actionable, and tailored to these met
                         filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfDay);
                       } else if (callDateFilter === 'week') {
                         const startOfWeek = new Date(now);
-                        startOfWeek.setDate(now.getDate() - now.getDay());
+                        startOfWeek.setDate(now.getDate() - 7);
                         startOfWeek.setHours(0, 0, 0, 0);
                         filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfWeek);
                       } else if (callDateFilter === 'month') {
-                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                        const startOfMonth = new Date(now);
+                        startOfMonth.setDate(now.getDate() - 30);
                         filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfMonth);
                       }
 
-                      return filteredCalls.length;
-                    })()})
-                  </CardTitle>
-                  <CardDescription>
-                    {callOutcomeFilter !== 'all' || callDateFilter !== 'all' 
-                      ? 'Filtered call history' 
-                      : 'Complete history of your calls'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {(() => {
-                    // Filter calls based on filters
-                    let filteredCalls = calls;
-
-                    // Filter by outcome
-                    if (callOutcomeFilter !== 'all') {
-                      filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
-                    }
-
-                    // Filter by date
-                    const now = new Date();
-                    if (callDateFilter === 'today') {
-                      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                      filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfDay);
-                    } else if (callDateFilter === 'week') {
-                      const startOfWeek = new Date(now);
-                      startOfWeek.setDate(now.getDate() - now.getDay());
-                      startOfWeek.setHours(0, 0, 0, 0);
-                      filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfWeek);
-                    } else if (callDateFilter === 'month') {
-                      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                      filteredCalls = filteredCalls.filter(call => new Date(call.created_at) >= startOfMonth);
-                    }
-
-                    return filteredCalls.length === 0 ? (
-                      <div className="text-center py-8">
-                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">
-                          {calls.length === 0 ? 'No calls made yet' : 'No calls match the selected filters'}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {filteredCalls.map((call) => {
-                        // Find analysis for this call using call_history_id from recording
-                        const analysis = analyses.find(a => a.recordings?.call_history_id === call.id);
-                        const hasAnalysis = !!analysis;
-                        const recordingStatus = analysis?.recordings?.status;
-                        const isProcessing = processingCalls.has(call.id);
-                        
+                      if (filteredCalls.length === 0) {
                         return (
-                          <div key={call.id} className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center space-x-4">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                call.outcome === 'not_answered' 
-                                  ? 'bg-red-100' 
-                                  : 'bg-blue-100'
-                              }`}>
-                                <Phone className={`h-5 w-5 ${
-                                  call.outcome === 'not_answered' 
-                                    ? 'text-red-600' 
-                                    : 'text-blue-600'
-                                }`} />
+                          <TableRow>
+                            <TableCell colSpan={5} className="h-32">
+                              <div className="text-center">
+                                <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                                <p className="text-muted-foreground">
+                                  {calls.length === 0 ? 'No calls made yet' : 'No calls match the selected filters'}
+                                </p>
                               </div>
-                              <div>
-                                <h4 className="font-medium flex items-center gap-2">
-                                  Call with {call.leads?.name || 'Lead'}
-                                  {call.outcome === 'not_answered' && (
-                                    <Badge variant="destructive" className="text-xs">Not Answered</Badge>
-                                  )}
-                                  {(call.next_follow_up || call.outcome === 'follow_up') && (
-                                    <Badge variant="outline" className="text-xs bg-orange-50 border-orange-300 text-orange-700">
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      Follow-up Scheduled
-                                    </Badge>
-                                  )}
-                                </h4>
-                                <p className="text-sm text-muted-foreground">
-                                  {call.leads?.email} • {call.leads?.contact}
-                                </p>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  {call.notes}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {new Date(call.created_at).toLocaleDateString()}
-                                </p>
-                                  <div className="flex items-center gap-2 mt-1">
-                                  {isProcessing || (hasAnalysis && recordingStatus === 'processing') ? (
-                                    <div className="flex items-center gap-2">
-                                      <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                                      <Badge variant="outline" className="text-xs bg-blue-50">
-                                        Analyzing...
-                                      </Badge>
-                                    </div>
-                                  ) : hasAnalysis && recordingStatus === 'completed' ? (
-                                    <>
-                                      <Badge variant="outline" className="text-xs">
-                                        Sentiment: {analysis?.sentiment_score}%
-                                      </Badge>
-                                      <Badge variant="outline" className="text-xs">
-                                        Engagement: {analysis?.engagement_score}%
-                                      </Badge>
-                                    </>
-                                  ) : hasAnalysis && recordingStatus === 'failed' ? (
-                                    <Badge variant="destructive" className="text-xs">
-                                      Analysis Failed
-                                    </Badge>
-                                  ) : hasAnalysis && recordingStatus === 'pending' ? (
-                                    <Badge variant="outline" className="text-xs">
-                                      Ready for Analysis
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="secondary" className="text-xs">
-                                      No Analysis
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {hasAnalysis && recordingStatus === 'completed' && (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  onClick={() => handleViewAnalysis(analysis.id)}
-                                  className="gap-1"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  View Analysis
-                                </Button>
-                              )}
-                              {!isProcessing && (!hasAnalysis || recordingStatus === 'pending' || recordingStatus === 'failed') && call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  onClick={() => handleGetAnalysis(call)}
-                                  className="gap-1"
-                                >
-                                  <BarChart3 className="h-4 w-4" />
-                                  Get Analysis
-                                </Button>
-                              )}
-                              {call.outcome !== 'not_answered' && call.outcome !== 'failed' && (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  onClick={() => window.open(`/call/${call.id}`, '_blank')}
-                                  className="gap-1"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  Details
-                                </Button>
-                              )}
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleDeleteCall(call.id)}
-                                className="gap-1 text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
+                            </TableCell>
+                          </TableRow>
                         );
-                      })}
-                    </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                      }
 
-            <TabsContent value="analytics" className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Performance Analytics</h2>
-                <p className="text-muted-foreground">Your call performance and comprehensive insights</p>
-              </div>
+                      return filteredCalls.map((call) => {
+                        const disposition = call.outcome || 'unknown';
 
-              {/* Call Performance Overview */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground mb-1">Total Calls</p>
-                      <p className="text-3xl font-bold">{calls.length}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground mb-1">Completed</p>
-                      <p className="text-3xl font-bold text-green-600">
-                        {calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {calls.length > 0 ? 
-                          `${Math.round((calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100)}%` 
-                          : '0%'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground mb-1">Follow-up</p>
-                      <p className="text-3xl font-bold text-orange-600">
-                        {calls.filter(c => c.outcome === 'follow_up').length}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {calls.length > 0 ? 
-                          `${Math.round((calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100)}%` 
-                          : '0%'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground mb-1">Not Answered</p>
-                      <p className="text-3xl font-bold text-red-600">
-                        {calls.filter(c => c.outcome === 'not_answered').length}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {calls.length > 0 ? 
-                          `${Math.round((calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100)}%` 
-                          : '0%'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Analysis Quality Metrics */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Call Quality Analysis</CardTitle>
-                  <CardDescription>
-                    {(() => {
-                      const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
-                      return completedAnalyses.length > 0 
-                        ? `Based on ${completedAnalyses.length} analyzed call${completedAnalyses.length > 1 ? 's' : ''}`
-                        : 'No completed analyses yet';
-                    })()}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {(() => {
-                    const completedAnalyses = analyses.filter(a => a.status?.toLowerCase() === 'completed');
-                    
-                    if (completedAnalyses.length === 0) {
-                      return (
-                        <div className="text-center py-8">
-                          <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                          <p className="text-muted-foreground">No analysis data available</p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Complete a call and click "Get Analysis" to see insights
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    const avgSentiment = completedAnalyses.length > 0
-                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length)
-                      : 0;
-                    
-                    const avgEngagement = completedAnalyses.length > 0
-                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length)
-                      : 0;
-                    
-                    const avgConfidenceExec = completedAnalyses.length > 0
-                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.confidence_score_executive) || 0), 0) / completedAnalyses.length)
-                      : 0;
-                    
-                    const avgConfidencePerson = completedAnalyses.length > 0
-                      ? Math.round(completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.confidence_score_person) || 0), 0) / completedAnalyses.length)
-                      : 0;
-
-                    const avgConfidence = Math.round((avgConfidenceExec + avgConfidencePerson) / 2);
-
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                          <div className="text-3xl font-bold text-blue-700 mb-1">{avgSentiment}%</div>
-                          <p className="text-sm text-blue-600 font-medium">Avg Sentiment</p>
-                          <p className="text-xs text-blue-500 mt-1">
-                            {avgSentiment >= 70 ? '😊 Excellent' : avgSentiment >= 50 ? '😐 Good' : '😟 Needs Improvement'}
-                          </p>
-                        </div>
-                        
-                        <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
-                          <div className="text-3xl font-bold text-green-700 mb-1">{avgEngagement}%</div>
-                          <p className="text-sm text-green-600 font-medium">Avg Engagement</p>
-                          <p className="text-xs text-green-500 mt-1">
-                            {avgEngagement >= 70 ? '🔥 High' : avgEngagement >= 50 ? '👍 Moderate' : '📉 Low'}
-                          </p>
-                        </div>
-                        
-                        <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
-                          <div className="text-3xl font-bold text-purple-700 mb-1">{avgConfidence}/10</div>
-                          <p className="text-sm text-purple-600 font-medium">Avg Confidence</p>
-                          <p className="text-xs text-purple-500 mt-1">
-                            {avgConfidence >= 7 ? '💪 Strong' : avgConfidence >= 5 ? '✓ Good' : '📚 Practice More'}
-                          </p>
-                        </div>
-                        
-                        <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg border border-orange-200">
-                          <div className="text-3xl font-bold text-orange-700 mb-1">{completedAnalyses.length}</div>
-                          <p className="text-sm text-orange-600 font-medium">Analyzed Calls</p>
-                          <p className="text-xs text-orange-500 mt-1">
-                            {calls.length > 0 ? `${Math.round((completedAnalyses.length / calls.length) * 100)}% of total` : '0% of total'}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-
-              {/* Call Outcome Breakdown */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Call Outcome Breakdown</CardTitle>
-                  <CardDescription>Distribution of your call results</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {calls.length > 0 ? (
-                    <div className="space-y-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-medium">Completed/Converted</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              {calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length}
-                            </span>
-                            <Badge variant="outline" className="bg-green-50 text-green-700">
-                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100) : 0}%
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-green-600 h-2 rounded-full" 
-                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / calls.length) * 100 : 0}%`}}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4 text-orange-600" />
-                            <span className="text-sm font-medium">Follow-up Required</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              {calls.filter(c => c.outcome === 'follow_up').length}
-                            </span>
-                            <Badge variant="outline" className="bg-orange-50 text-orange-700">
-                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100) : 0}%
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-orange-600 h-2 rounded-full" 
-                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'follow_up').length / calls.length) * 100 : 0}%`}}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Star className="h-4 w-4 text-blue-600" />
-                            <span className="text-sm font-medium">Interested</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              {calls.filter(c => c.outcome === 'interested').length}
-                            </span>
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'interested').length / calls.length) * 100) : 0}%
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full" 
-                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'interested').length / calls.length) * 100 : 0}%`}}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <XCircle className="h-4 w-4 text-gray-600" />
-                            <span className="text-sm font-medium">Not Interested</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              {calls.filter(c => c.outcome === 'not_interested').length}
-                            </span>
-                            <Badge variant="outline" className="bg-gray-50 text-gray-700">
-                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'not_interested').length / calls.length) * 100) : 0}%
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-gray-600 h-2 rounded-full" 
-                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'not_interested').length / calls.length) * 100 : 0}%`}}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4 text-red-600" />
-                            <span className="text-sm font-medium">Not Answered</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              {calls.filter(c => c.outcome === 'not_answered').length}
-                            </span>
-                            <Badge variant="outline" className="bg-red-50 text-red-700">
-                              {calls.length > 0 ? Math.round((calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100) : 0}%
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-red-600 h-2 rounded-full" 
-                            style={{width: `${calls.length > 0 ? (calls.filter(c => c.outcome === 'not_answered').length / calls.length) * 100 : 0}%`}}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                      <p className="text-muted-foreground">No calls made yet</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Start making calls to see your performance breakdown
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* AI-Powered Performance Insights */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                        AI Performance Insights & Tips
-                      </CardTitle>
-                      <CardDescription>
-                        {lastInsightsFetch 
-                          ? `Last updated: ${new Date(lastInsightsFetch).toLocaleString()}`
-                          : 'Personalized AI-powered recommendations based on your performance data'}
-                      </CardDescription>
-                    </div>
-                    <Button 
-                      onClick={fetchAIInsights}
-                      disabled={isLoadingInsights || calls.length === 0}
-                      size="sm"
-                      className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-                    >
-                      {isLoadingInsights ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="font-medium">Analyzing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Star className="h-4 w-4 fill-yellow-300 text-yellow-300 animate-pulse" />
-                          <span className="font-medium">Get AI-Powered Insights</span>
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {calls.length === 0 ? (
-                    <div className="text-center py-8">
-                      <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                      <p className="text-muted-foreground">Start making calls to receive AI-powered insights</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Once you have call data, our AI will analyze your performance and provide personalized recommendations
-                      </p>
-                    </div>
-                  ) : isLoadingInsights ? (
-                    <div className="text-center py-8">
-                      <Loader2 className="h-12 w-12 text-blue-600 mx-auto mb-3 animate-spin" />
-                      <p className="text-muted-foreground">Analyzing your performance data...</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Generating personalized insights and improvement tips
-                      </p>
-                    </div>
-                  ) : aiInsights.length > 0 ? (
-                    <div className="space-y-4">
-                      {aiInsights.map((insight, index) => {
-                        const getIcon = () => {
-                          switch (insight.type) {
-                            case 'success':
-                              return <CheckCircle className="h-5 w-5 text-green-600" />;
-                            case 'warning':
-                              return <AlertTriangle className="h-5 w-5 text-orange-600" />;
-                            case 'error':
-                              return <XCircle className="h-5 w-5 text-red-600" />;
+                        const getDispositionStyle = (outcome: string) => {
+                          switch (outcome) {
+                            case 'converted':
+                              return 'text-green-600 bg-green-50 border-green-200';
+                            case 'follow_up':
+                              return 'text-orange-600 bg-orange-50 border-orange-200';
+                            case 'rejected':
+                              return 'text-red-600 bg-red-50 border-red-200';
+                            case 'not_answered':
+                              return 'text-gray-600 bg-gray-50 border-gray-200';
                             default:
-                              return <BarChart3 className="h-5 w-5 text-blue-600" />;
+                              return 'text-blue-600 bg-blue-50 border-blue-200';
+                          }
+                        };
+
+                        const getDispositionLabel = (outcome: string) => {
+                          switch (outcome) {
+                            case 'converted':
+                              return 'Converted';
+                            case 'follow_up':
+                              return 'Follow-up';
+                            case 'rejected':
+                              return 'Rejected';
+                            case 'not_answered':
+                              return 'Not Answered';
+                            default:
+                              return outcome.charAt(0).toUpperCase() + outcome.slice(1).replace('_', ' ');
                           }
                         };
 
                         return (
-                          <div 
-                            key={index}
-                            className={`flex gap-3 p-4 rounded-lg border ${
-                              insight.type === 'success' ? 'bg-green-50 border-green-200' :
-                              insight.type === 'warning' ? 'bg-orange-50 border-orange-200' :
-                              insight.type === 'error' ? 'bg-red-50 border-red-200' :
-                              'bg-blue-50 border-blue-200'
-                            }`}
-                          >
-                            <div className="flex-shrink-0 mt-0.5">
-                              {getIcon()}
-                            </div>
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-sm mb-1">{insight.title}</h4>
-                              <p className="text-sm text-muted-foreground">{insight.message}</p>
-                            </div>
-                          </div>
+                          <TableRow key={call.id} className="hover:bg-gray-50">
+                            <TableCell>
+                              <div className="font-medium">{call.leads?.name || 'Unknown'}</div>
+                              <div className="text-sm text-gray-500">{call.leads?.contact || 'N/A'}</div>
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              {call.leads?.contact || 'N/A'}
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              <div>{new Date(call.created_at).toLocaleDateString('en-GB')}</div>
+                              <div className="text-sm text-gray-500">
+                                {new Date(call.created_at).toLocaleTimeString('en-GB', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getDispositionStyle(disposition)}`}>
+                                {getDispositionLabel(disposition)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-gray-600">You</TableCell>
+                          </TableRow>
                         );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 mb-4">
-                        <Star className="h-10 w-10 text-purple-600 fill-purple-600" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-foreground mb-2">
-                        Get AI-Powered Insights
-                      </h3>
-                      <p className="text-muted-foreground max-w-md mx-auto">
-                        Click the button above to analyze your performance data and receive personalized AI-powered recommendations and improvement tips.
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      });
+                    })()}
+                  </TableBody>
+                </Table>
+              </div>
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6">
@@ -3066,19 +3128,62 @@ Please provide insights that are specific, actionable, and tailored to these met
           <form onSubmit={handleSubmitCall} className="space-y-4">
             <div>
               <Label htmlFor="callOutcomeStatus">Call Outcome *</Label>
-              <Select value={callOutcomeStatus} onValueChange={(value: 'follow_up' | 'completed' | 'not_interested') => {
+              <Select value={callOutcomeStatus} onValueChange={(value: 'rejected' | 'converted' | 'follow_up' | 'not_answered') => {
                 setCallOutcomeStatus(value);
+                // Fetch clients when converted is selected
+                if (value === 'converted') {
+                  supabase.from('clients').select('*').eq('company_id', userRole?.company_id).then(({ data }) => {
+                    setClients(data || []);
+                  });
+                }
               }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select call outcome" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="follow_up">Follow Up</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="not_interested">Not Interested</SelectItem>
+                  <SelectItem value="converted">Converted</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                  <SelectItem value="follow_up">Follow-up</SelectItem>
+                  <SelectItem value="not_answered">Not Answered</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {callOutcomeStatus === 'converted' && (
+              <>
+                <div>
+                  <Label htmlFor="selectedClient">Select Client *</Label>
+                  <Select value={selectedClient} onValueChange={(value) => {
+                    setSelectedClient(value);
+                    // Fetch jobs for selected client
+                    supabase.from('jobs').select('*').eq('client_id', value).eq('is_active', true).then(({ data }) => {
+                      setJobs(data || []);
+                    });
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(client => (
+                        <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="selectedJob">Select Job *</Label>
+                  <Select value={selectedJob} onValueChange={setSelectedJob} disabled={!selectedClient}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select job" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {jobs.map(job => (
+                        <SelectItem key={job.id} value={job.id}>{job.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             <div>
               <Label htmlFor="callOutcome">Call Notes *</Label>
               <Input
@@ -3120,6 +3225,8 @@ Please provide insights that are specific, actionable, and tailored to these met
                 setCallOutcomeStatus('follow_up');
                 setNextFollowUpDate("");
                 setNextFollowUpTime("");
+                setSelectedClient("");
+                setSelectedJob("");
                 setSelectedLead(null);
                 setIsCallModalOpen(false);
               }}>
@@ -3210,278 +3317,32 @@ Please provide insights that are specific, actionable, and tailored to these met
               </Select>
             </div>
             
-            <div>
-              <Label htmlFor="toNumber">To Number *</Label>
-              <Input
-                id="toNumber"
-                value={toNumber}
-                onChange={(e) => setToNumber(e.target.value)}
-                placeholder="Enter recipient phone number"
-                required
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="callerId">Caller ID</Label>
-              <Input
-                id="callerId"
-                value={callerId}
-                readOnly
-                className="bg-gray-50"
-                placeholder="Caller ID set by admin"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                This is set by your admin in Company Settings
-              </p>
-            </div>
-
-            {/* Call Status Display */}
-            {isCallInProgress && (
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-blue-700">
-                    Call Status: {callStatus}
-                  </span>
-                </div>
-                {currentCallSid && (
-                  <p className="text-xs text-blue-600 mt-1">
-                    Call ID: {currentCallSid}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2 mt-6">
-            <Button 
-              variant="outline" 
-              onClick={handleCancelCall}
-              disabled={isCallInProgress}
-            >
-              {isCallInProgress ? 'Call in Progress...' : 'Cancel'}
-            </Button>
-            <Button 
-              onClick={handleExotelCall}
-              disabled={isCallInProgress || !fromNumber.trim() || !toNumber.trim()}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isCallInProgress ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Calling...
-                </>
-              ) : (
-                <>
-                  <Phone className="h-4 w-4 mr-2" />
-                  Make Call
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Phone Dialer Modal */}
-      <Dialog open={isDialerModalOpen} onOpenChange={setIsDialerModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <PhoneCall className="h-5 w-5 text-green-600" />
-              Phone Dialer
-            </DialogTitle>
-            <DialogDescription>
-              Dial a number to make a call
-            </DialogDescription>
-          </DialogHeader>
-          <PhoneDialer onCallComplete={() => {
-            fetchData(true);
-            setIsDialerModalOpen(false);
-          }} />
-        </DialogContent>
-      </Dialog>
-
-      {/* Call Details Modal */}
-      <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          {selectedCallDetails && (
-            <div className="space-y-4">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <PhoneCall className="h-5 w-5 text-blue-600" />
-                  Call Details
-                </DialogTitle>
-              </DialogHeader>
-              
-              {/* Lead Information */}
-              <div className="border rounded-lg p-4 space-y-2">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Lead Information
-                </h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Name:</span>
-                    <span className="ml-2 font-medium">{selectedCallDetails.leads?.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Email:</span>
-                    <span className="ml-2 font-medium">{selectedCallDetails.leads?.email}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Contact:</span>
-                    <span className="ml-2 font-medium">{selectedCallDetails.leads?.contact}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Call Date:</span>
-                    <span className="ml-2 font-medium">{new Date(selectedCallDetails.created_at).toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Call Outcome */}
-              <div className="border rounded-lg p-4 space-y-2">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <PhoneCall className="h-4 w-4" />
-                  Call Outcome
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Status:</span>
-                    <Badge className={
-                      selectedCallDetails.outcome === 'completed' ? 'bg-green-500' :
-                      selectedCallDetails.outcome === 'follow_up' ? 'bg-orange-500' :
-                      'bg-gray-500'
-                    }>
-                      {selectedCallDetails.outcome.replace('_', ' ').toUpperCase()}
-                    </Badge>
-                    {selectedCallDetails.auto_call_followup && selectedCallDetails.outcome === 'follow_up' && (
-                      <Badge variant="outline" className="bg-blue-50">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Auto-call enabled
-                      </Badge>
-                    )}
-                  </div>
-                  {selectedCallDetails.notes && (
-                    <div>
-                      <span className="text-muted-foreground">Notes:</span>
-                      <p className="mt-1 text-sm bg-muted p-2 rounded">{selectedCallDetails.notes}</p>
-                    </div>
-                  )}
-                  {selectedCallDetails.next_follow_up && (
-                    <div>
-                      <span className="text-muted-foreground">Next Follow-up:</span>
-                      <span className="ml-2 font-medium">{new Date(selectedCallDetails.next_follow_up).toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Exotel Response */}
-              {selectedCallDetails.exotel_response && (
-                <div className="border rounded-lg p-4 space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    Call Technical Details
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Call SID:</span>
-                      <span className="ml-2 font-mono text-xs">{selectedCallDetails.exotel_call_sid}</span>
-                    </div>
-                    {selectedCallDetails.exotel_recording_url && (
-                      <div className="col-span-2">
-                        <span className="text-muted-foreground">Recording:</span>
-                        <a 
-                          href={selectedCallDetails.exotel_recording_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="ml-2 text-blue-600 hover:underline text-sm"
-                        >
-                          Listen to recording
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Form Data */}
-              {selectedCallDetails.call_details && (
-                <div className="border rounded-lg p-4 space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Form Data
-                  </h3>
-                  <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
-                    {JSON.stringify(selectedCallDetails.call_details, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              <Button 
-                onClick={() => setIsCallDetailsModalOpen(false)}
-                className="w-full"
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsExotelCallModalOpen(false)}
               >
-                Close
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExotelCall}
+                disabled={!fromNumber || !selectedLead?.contact || isCallInProgress}
+              >
+                {isCallInProgress ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Calling...
+                  </>
+                ) : (
+                  <>
+                    <Phone className="h-4 w-4 mr-2" />
+                    Call Now
+                  </>
+                )}
               </Button>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Remove Lead Modal */}
-      <Dialog open={isRemoveLeadModalOpen} onOpenChange={setIsRemoveLeadModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-red-600" />
-              Remove Lead
-            </DialogTitle>
-            <DialogDescription>
-              Please provide a reason for removing this lead. This action will move the lead to the removed leads list.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedLeadToRemove && (
-            <div className="space-y-4">
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <h4 className="font-medium">{selectedLeadToRemove.name}</h4>
-                <p className="text-sm text-gray-600">{selectedLeadToRemove.email}</p>
-                <p className="text-sm text-gray-600">{selectedLeadToRemove.contact}</p>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="removal-reason">Reason for Removal *</Label>
-                <Textarea
-                  id="removal-reason"
-                  placeholder="Please provide a reason for removing this lead..."
-                  value={removalReason}
-                  onChange={(e) => setRemovalReason(e.target.value)}
-                  className="min-h-[100px]"
-                />
-              </div>
-              
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsRemoveLeadModalOpen(false);
-                    setSelectedLeadToRemove(null);
-                    setRemovalReason("");
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleConfirmRemoveLead}
-                  className="bg-red-600 hover:bg-red-700"
-                >
-                  Remove Lead
-                </Button>
-              </div>
-            </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
 

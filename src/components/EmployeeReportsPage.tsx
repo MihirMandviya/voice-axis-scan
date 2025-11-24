@@ -152,22 +152,16 @@ export default function EmployeeReportsPage() {
         leads: call.lead_id ? leadsMap.get(call.lead_id) : null
       })) || [];
 
-      // Fetch analyses for the period
-      const callIds = (callsData || []).map(call => call.id);
-      let analysesData = [];
-      
-      if (callIds.length > 0) {
-        const { data: analyses, error: analysesError } = await supabase
-          .from('analyses')
-          .select('*')
-          .in('call_id', callIds);
+      // Fetch analyses for the period through recordings
+      const { data: analysesData, error: analysesError } = await supabase
+        .from('analyses')
+        .select('*')
+        .eq('user_id', userRole.user_id)
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
 
-        if (analysesError) {
-          console.error('Error fetching analyses:', analysesError);
-          // Don't throw, just log and continue with empty analyses
-        } else {
-          analysesData = analyses || [];
-        }
+      if (analysesError) {
+        console.error('Error fetching analyses:', analysesError);
       }
       
       console.log('Analyses fetched:', analysesData?.length || 0);
@@ -176,7 +170,7 @@ export default function EmployeeReportsPage() {
       const totalCalls = callsWithLeads?.length || 0;
       const completedCalls = callsWithLeads?.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length || 0;
       const followUpCalls = callsWithLeads?.filter(c => c.outcome === 'follow_up').length || 0;
-      const notInterestedCalls = callsWithLeads?.filter(c => c.outcome === 'not_interested').length || 0;
+      const notInterestedCalls = callsWithLeads?.filter(c => c.outcome === 'not_interested' || c.outcome === 'rejected').length || 0;
       const notAnsweredCalls = callsWithLeads?.filter(c => c.outcome === 'not_answered').length || 0;
 
       console.log('Total calls in period:', totalCalls);
@@ -186,22 +180,23 @@ export default function EmployeeReportsPage() {
       console.log('Not answered calls:', notAnsweredCalls);
       console.log('All calls outcomes:', callsWithLeads?.map(c => c.outcome));
 
-      const completedAnalyses = (analysesData || []).filter(a => a && a.status?.toLowerCase() === 'completed');
+      const completedAnalyses = (analysesData || []);
       
       console.log('Completed analyses:', completedAnalyses.length);
 
-      const avgSentiment = completedAnalyses.length > 0 ?
-        (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.sentiment_score) || 0), 0) / completedAnalyses.length).toFixed(1) : '0';
+      // Calculate metrics from analyses table: closure probability, candidate risk, recruiter confidence, recruiter score
+      const avgClosureProbability = completedAnalyses.length > 0 ?
+        (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.closure_probability) || 0), 0) / completedAnalyses.length).toFixed(1) : '0';
       
-      const avgEngagement = completedAnalyses.length > 0 ?
-        (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.engagement_score) || 0), 0) / completedAnalyses.length).toFixed(1) : '0';
+      // candidate_acceptance_risk is stored as numeric (0-100), higher means more risk
+      const avgCandidateRisk = completedAnalyses.length > 0 ?
+        (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.candidate_acceptance_risk) || 0), 0) / completedAnalyses.length).toFixed(1) : '0';
       
-      const avgConfidence = completedAnalyses.length > 0 ?
-        (completedAnalyses.reduce((sum, a) => {
-          const execScore = parseFloat(a.confidence_score_executive) || 0;
-          const personScore = parseFloat(a.confidence_score_person) || 0;
-          return sum + ((execScore + personScore) / 2);
-        }, 0) / completedAnalyses.length).toFixed(1) : '0';
+      const avgRecruiterConfidence = completedAnalyses.length > 0 ?
+        (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.recruiter_confidence_score) || 0), 0) / completedAnalyses.length).toFixed(1) : '0';
+      
+      const avgRecruiterScore = completedAnalyses.length > 0 ?
+        (completedAnalyses.reduce((sum, a) => sum + (parseFloat(a.recruiter_process_score) || 0), 0) / completedAnalyses.length).toFixed(1) : '0';
 
       const perfData = {
         total_calls: totalCalls,
@@ -210,9 +205,10 @@ export default function EmployeeReportsPage() {
         not_interested_calls: notInterestedCalls,
         not_answered_calls: notAnsweredCalls,
         conversion_rate: totalCalls > 0 ? ((completedCalls / totalCalls) * 100).toFixed(1) : 0,
-        avg_sentiment: avgSentiment,
-        avg_engagement: avgEngagement,
-        avg_confidence: avgConfidence,
+        avg_closure_probability: avgClosureProbability,
+        avg_candidate_risk: avgCandidateRisk,
+        avg_recruiter_confidence: avgRecruiterConfidence,
+        avg_recruiter_score: avgRecruiterScore,
         total_analyses: completedAnalyses.length,
         calls: callsWithLeads || []
       };
@@ -440,31 +436,31 @@ export default function EmployeeReportsPage() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <ThumbsUp className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-              <div className="text-3xl font-bold text-blue-600">{performanceData?.avg_sentiment || 0}%</div>
-              <p className="text-sm text-blue-600 font-medium mt-1">Avg Sentiment</p>
-              <p className="text-xs text-muted-foreground mt-1">Customer positivity</p>
+              <Target className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+              <div className="text-3xl font-bold text-blue-600">{performanceData?.avg_closure_probability || 0}%</div>
+              <p className="text-sm text-blue-600 font-medium mt-1">Avg Closure Prob</p>
+              <p className="text-xs text-muted-foreground mt-1">Deal closure likelihood</p>
+            </div>
+            
+            <div className="text-center p-4 bg-red-50 rounded-lg">
+              <Activity className="h-8 w-8 text-red-600 mx-auto mb-2" />
+              <div className="text-3xl font-bold text-red-600">{performanceData?.avg_candidate_risk || 0}%</div>
+              <p className="text-sm text-red-600 font-medium mt-1">Avg Candidate Risk</p>
+              <p className="text-xs text-muted-foreground mt-1">Risk of rejection</p>
             </div>
             
             <div className="text-center p-4 bg-green-50 rounded-lg">
-              <MessageSquare className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <div className="text-3xl font-bold text-green-600">{performanceData?.avg_engagement || 0}%</div>
-              <p className="text-sm text-green-600 font-medium mt-1">Avg Engagement</p>
-              <p className="text-xs text-muted-foreground mt-1">Conversation quality</p>
+              <Award className="h-8 w-8 text-green-600 mx-auto mb-2" />
+              <div className="text-3xl font-bold text-green-600">{performanceData?.avg_recruiter_confidence || 0}/10</div>
+              <p className="text-sm text-green-600 font-medium mt-1">Avg Recruiter Confidence</p>
+              <p className="text-xs text-muted-foreground mt-1">Confidence level</p>
             </div>
             
             <div className="text-center p-4 bg-purple-50 rounded-lg">
-              <Activity className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <div className="text-3xl font-bold text-purple-600">{performanceData?.avg_confidence || 0}/10</div>
-              <p className="text-sm text-purple-600 font-medium mt-1">Avg Confidence</p>
-              <p className="text-xs text-muted-foreground mt-1">Speaking confidence</p>
-            </div>
-            
-            <div className="text-center p-4 bg-orange-50 rounded-lg">
-              <BarChart3 className="h-8 w-8 text-orange-600 mx-auto mb-2" />
-              <div className="text-3xl font-bold text-orange-600">{performanceData?.total_analyses || 0}</div>
-              <p className="text-sm text-orange-600 font-medium mt-1">Total Analyses</p>
-              <p className="text-xs text-muted-foreground mt-1">Completed</p>
+              <ThumbsUp className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+              <div className="text-3xl font-bold text-purple-600">{performanceData?.avg_recruiter_score || 0}/10</div>
+              <p className="text-sm text-purple-600 font-medium mt-1">Avg Recruiter Score</p>
+              <p className="text-xs text-muted-foreground mt-1">Process quality</p>
             </div>
           </div>
         </CardContent>

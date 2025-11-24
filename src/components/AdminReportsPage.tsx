@@ -211,7 +211,7 @@ export default function AdminReportsPage() {
           total_calls: managerCalls.length,
           completed_calls: managerCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length,
           follow_up_calls: managerCalls.filter(c => c.outcome === 'follow_up').length,
-          not_interested: managerCalls.filter(c => c.outcome === 'not_interested').length,
+          not_interested: managerCalls.filter(c => c.outcome === 'not_interested' || c.outcome === 'rejected').length,
           conversion_rate: managerCalls.length > 0 ? 
             ((managerCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / managerCalls.length) * 100).toFixed(1) : 0,
           avg_sentiment: completedAnalyses.length > 0 ?
@@ -243,7 +243,7 @@ export default function AdminReportsPage() {
           total_calls: employeeCalls.length,
           completed_calls: employeeCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length,
           follow_up_calls: employeeCalls.filter(c => c.outcome === 'follow_up').length,
-          not_interested: employeeCalls.filter(c => c.outcome === 'not_interested').length,
+          not_interested: employeeCalls.filter(c => c.outcome === 'not_interested' || c.outcome === 'rejected').length,
           conversion_rate: employeeCalls.length > 0 ? 
             ((employeeCalls.filter(c => c.outcome === 'completed' || c.outcome === 'converted').length / employeeCalls.length) * 100).toFixed(1) : 0,
           avg_sentiment: completedAnalyses.length > 0 ?

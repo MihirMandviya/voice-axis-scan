@@ -102,6 +102,7 @@ export interface Lead {
   client_id?: string // Reference to the client
   job_id?: string // Reference to the job this candidate is being considered for
   assigned_to?: string // Reference to the employee assigned to work on this lead (by the manager)
+  status?: 'contacted' | 'follow_up' | 'converted' | 'completed' | 'not_interested' | 'removed' // Lead status
   created_at: string
   updated_at: string
   lead_groups?: LeadGroup // Joined data
