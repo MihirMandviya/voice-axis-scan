@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -190,6 +190,14 @@ export default function AdminDashboard() {
     new_password: '',
     confirm_password: '',
   });
+  
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('month');
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: '',
+    endDate: ''
+  });
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   
   const [newUser, setNewUser] = useState({
     email: "",
@@ -1946,6 +1954,140 @@ export default function AdminDashboard() {
     }
   }, [managers, selectedManager]);
 
+  // Filter data based on date range - using useMemo for reactivity
+  const dateFilteredCalls = useMemo(() => {
+    const now = new Date();
+    const currentTime = now.getTime();
+    
+    const filtered = calls.filter(call => {
+      if (!call.created_at) return false;
+      const date = new Date(call.created_at);
+      const callTime = date.getTime();
+      
+      if (dateFilter === 'today') {
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        return callTime >= todayStart.getTime() && callTime <= todayEnd.getTime();
+      } else if (dateFilter === 'week') {
+        // Get Monday of current week as start
+        const weekStart = new Date(now);
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days to Monday
+        weekStart.setDate(now.getDate() - daysFromMonday);
+        weekStart.setHours(0, 0, 0, 0);
+        
+        // Get Friday of current week as end
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 4); // Friday is 4 days after Monday
+        weekEnd.setHours(23, 59, 59, 999);
+        
+        return callTime >= weekStart.getTime() && callTime <= weekEnd.getTime();
+      } else if (dateFilter === 'month') {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthStart.setHours(0, 0, 0, 0);
+        // Don't include future dates beyond current time
+        return callTime >= monthStart.getTime() && callTime <= currentTime;
+      } else if (dateFilter === 'custom' && customDateRange.startDate && customDateRange.endDate) {
+        const start = new Date(customDateRange.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(customDateRange.endDate);
+        end.setHours(23, 59, 59, 999);
+        return callTime >= start.getTime() && callTime <= end.getTime();
+      }
+      return true; // Default: show all data
+    });
+    
+    return filtered;
+  }, [calls, dateFilter, customDateRange.startDate, customDateRange.endDate]);
+
+  const dateFilteredAnalyses = useMemo(() => {
+    const now = new Date();
+    const currentTime = now.getTime();
+    
+    return analyses.filter(analysis => {
+      const createdAt = analysis.created_at || analysis.recordings?.call_history?.created_at;
+      if (!createdAt) return false;
+      
+      const date = new Date(createdAt);
+      const analysisTime = date.getTime();
+      
+      if (dateFilter === 'today') {
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        return analysisTime >= todayStart.getTime() && analysisTime <= todayEnd.getTime();
+      } else if (dateFilter === 'week') {
+        // Get Monday of current week as start
+        const weekStart = new Date(now);
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days to Monday
+        weekStart.setDate(now.getDate() - daysFromMonday);
+        weekStart.setHours(0, 0, 0, 0);
+        
+        // Get Friday of current week as end
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 4); // Friday is 4 days after Monday
+        weekEnd.setHours(23, 59, 59, 999);
+        
+        return analysisTime >= weekStart.getTime() && analysisTime <= weekEnd.getTime();
+      } else if (dateFilter === 'month') {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthStart.setHours(0, 0, 0, 0);
+        // Don't include future dates beyond current time
+        return analysisTime >= monthStart.getTime() && analysisTime <= currentTime;
+      } else if (dateFilter === 'custom' && customDateRange.startDate && customDateRange.endDate) {
+        const start = new Date(customDateRange.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(customDateRange.endDate);
+        end.setHours(23, 59, 59, 999);
+        return analysisTime >= start.getTime() && analysisTime <= end.getTime();
+      }
+      return true;
+    });
+  }, [analyses, dateFilter, customDateRange.startDate, customDateRange.endDate]);
+
+  const dateFilteredDailyProductivity = useMemo(() => {
+    const now = new Date();
+    const currentTime = now.getTime();
+    
+    return dailyProductivity.filter(p => {
+      if (!p.date) return false;
+      const date = new Date(p.date);
+      const prodTime = date.getTime();
+      
+      if (dateFilter === 'today') {
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        return prodTime >= todayStart.getTime() && prodTime <= todayEnd.getTime();
+      } else if (dateFilter === 'week') {
+        // Get Monday of current week as start
+        const weekStart = new Date(now);
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days to Monday
+        weekStart.setDate(now.getDate() - daysFromMonday);
+        weekStart.setHours(0, 0, 0, 0);
+        
+        // Get Friday of current week as end
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 4); // Friday is 4 days after Monday
+        weekEnd.setHours(23, 59, 59, 999);
+        
+        return prodTime >= weekStart.getTime() && prodTime <= weekEnd.getTime();
+      } else if (dateFilter === 'month') {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthStart.setHours(0, 0, 0, 0);
+        // Don't include future dates beyond current time
+        return prodTime >= monthStart.getTime() && prodTime <= currentTime;
+      } else if (dateFilter === 'custom' && customDateRange.startDate && customDateRange.endDate) {
+        const start = new Date(customDateRange.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(customDateRange.endDate);
+        end.setHours(23, 59, 59, 999);
+        return prodTime >= start.getTime() && prodTime <= end.getTime();
+      }
+      return true;
+    });
+  }, [dailyProductivity, dateFilter, customDateRange.startDate, customDateRange.endDate]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1960,11 +2102,11 @@ export default function AdminDashboard() {
   // Calculate manager stats
   const getManagerStats = (manager: Manager) => {
     const managerEmployees = employees.filter(e => e.manager_id === manager.id);
-    const totalCalls = calls.filter(c => 
+    const totalCalls = dateFilteredCalls.filter(c => 
       managerEmployees.some(e => e.user_id === c.employee_id)
     ).length;
     
-    const totalCallDurations = calls
+    const totalCallDurations = dateFilteredCalls
       .filter(c => managerEmployees.some(e => e.user_id === c.employee_id))
       .reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
     
@@ -1973,7 +2115,7 @@ export default function AdminDashboard() {
     const avgSeconds = Math.floor(avgDuration % 60);
 
     // Calculate closure probability from analyses
-    const managerAnalyses = analyses.filter(a => 
+    const managerAnalyses = dateFilteredAnalyses.filter(a => 
       managerEmployees.some(e => e.user_id === a.user_id)
     );
     const avgClosureProbability = managerAnalyses.length > 0 
@@ -2127,6 +2269,111 @@ export default function AdminDashboard() {
         <main className="flex-1 p-6 bg-gray-50 overflow-y-auto">
           {activeSidebarItem === 'overview' && (
             <div className="space-y-6">
+              {/* Date Filter */}
+              <Card className="bg-white shadow-sm">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-5 w-5 text-gray-600" />
+                      <span className="text-sm font-semibold text-gray-700">Date Range:</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant={dateFilter === 'today' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          console.log('Setting date filter to: today');
+                          setDateFilter('today');
+                          setShowCustomDatePicker(false);
+                        }}
+                      >
+                        Today
+                      </Button>
+                      <Button
+                        variant={dateFilter === 'week' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          console.log('Setting date filter to: week');
+                          setDateFilter('week');
+                          setShowCustomDatePicker(false);
+                        }}
+                      >
+                        This Week
+                      </Button>
+                      <Button
+                        variant={dateFilter === 'month' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          console.log('Setting date filter to: month');
+                          setDateFilter('month');
+                          setShowCustomDatePicker(false);
+                        }}
+                      >
+                        This Month
+                      </Button>
+                      <Button
+                        variant={dateFilter === 'custom' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setDateFilter('custom');
+                          setShowCustomDatePicker(!showCustomDatePicker);
+                        }}
+                      >
+                        Custom Range
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Custom Date Range Picker */}
+                  {showCustomDatePicker && dateFilter === 'custom' && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Label htmlFor="startDate" className="text-sm mb-1 block">Start Date</Label>
+                          <Input
+                            id="startDate"
+                            type="date"
+                            value={customDateRange.startDate}
+                            onChange={(e) => setCustomDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <Label htmlFor="endDate" className="text-sm mb-1 block">End Date</Label>
+                          <Input
+                            id="endDate"
+                            type="date"
+                            value={customDateRange.endDate}
+                            onChange={(e) => setCustomDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                            className="w-full"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          className="mt-6"
+                          onClick={() => {
+                            if (customDateRange.startDate && customDateRange.endDate) {
+                              toast({
+                                title: "Date range applied",
+                                description: `Showing data from ${new Date(customDateRange.startDate).toLocaleDateString()} to ${new Date(customDateRange.endDate).toLocaleDateString()}`
+                              });
+                            } else {
+                              toast({
+                                title: "Invalid date range",
+                                description: "Please select both start and end dates",
+                                variant: "destructive"
+                              });
+                            }
+                          }}
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              
               {/* Top Stats */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-white shadow-sm">
@@ -2165,7 +2412,7 @@ export default function AdminDashboard() {
                     <PhoneCall className="h-5 w-5 text-violet-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{calls.length < 1000 ? calls.length : `${(calls.length / 1000).toFixed(1)}k`}</div>
+                    <div className="text-3xl font-bold">{dateFilteredCalls.length < 1000 ? dateFilteredCalls.length : `${(dateFilteredCalls.length / 1000).toFixed(1)}k`}</div>
                     <div className="flex items-center mt-1">
                       <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
                       <span className="text-xs font-medium text-green-500">Good</span>
@@ -2183,8 +2430,8 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-green-700">
-                      {calls.length > 0 
-                        ? Math.round((analyses.filter(a => (a.closure_probability || 0) >= 70).length / analyses.length) * 100) || 0
+                      {dateFilteredCalls.length > 0 
+                        ? Math.round((dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 70).length / dateFilteredAnalyses.length) * 100) || 0
                         : 0}%
                     </div>
                     <p className="text-xs text-gray-600 mt-1">High probability closures</p>
@@ -2198,8 +2445,8 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-purple-700">
-                      {calls.length > 0 
-                        ? `${Math.floor(calls.reduce((sum, c) => sum + (c.exotel_duration || 0), 0) / calls.length / 60)}m`
+                      {dateFilteredCalls.length > 0 
+                        ? `${Math.floor(dateFilteredCalls.reduce((sum, c) => sum + (c.exotel_duration || 0), 0) / dateFilteredCalls.length / 60)}m`
                         : '0m'}
                     </div>
                     <p className="text-xs text-gray-600 mt-1">Across all calls</p>
@@ -2293,11 +2540,11 @@ export default function AdminDashboard() {
                           <PieChart>
                             <Pie
                               data={[
-                                { name: 'Completed', value: calls.filter(c => c.outcome === 'completed').length, fill: '#22c55e' },
-                                { name: 'Follow Up', value: calls.filter(c => c.outcome === 'follow_up').length, fill: '#f59e0b' },
-                                { name: 'Not Answered', value: calls.filter(c => c.outcome === 'not_answered').length, fill: '#6366f1' },
-                                { name: 'Not Interested', value: calls.filter(c => c.outcome === 'not_interested').length, fill: '#ef4444' },
-                                { name: 'Converted', value: calls.filter(c => c.outcome === 'converted').length, fill: '#8b5cf6' },
+                                { name: 'Completed', value: dateFilteredCalls.filter(c => c.outcome === 'completed').length, fill: '#22c55e' },
+                                { name: 'Follow Up', value: dateFilteredCalls.filter(c => c.outcome === 'follow_up').length, fill: '#f59e0b' },
+                                { name: 'Not Answered', value: dateFilteredCalls.filter(c => c.outcome === 'not_answered').length, fill: '#6366f1' },
+                                { name: 'Not Interested', value: dateFilteredCalls.filter(c => c.outcome === 'not_interested').length, fill: '#ef4444' },
+                                { name: 'Converted', value: dateFilteredCalls.filter(c => c.outcome === 'converted').length, fill: '#8b5cf6' },
                               ].filter(d => d.value > 0)}
                               cx="50%"
                               cy="50%"
@@ -2308,11 +2555,11 @@ export default function AdminDashboard() {
                               label={(entry) => `${entry.value}`}
                             >
                               {[
-                                { name: 'Completed', value: calls.filter(c => c.outcome === 'completed').length, fill: '#22c55e' },
-                                { name: 'Follow Up', value: calls.filter(c => c.outcome === 'follow_up').length, fill: '#f59e0b' },
-                                { name: 'Not Answered', value: calls.filter(c => c.outcome === 'not_answered').length, fill: '#6366f1' },
-                                { name: 'Not Interested', value: calls.filter(c => c.outcome === 'not_interested').length, fill: '#ef4444' },
-                                { name: 'Converted', value: calls.filter(c => c.outcome === 'converted').length, fill: '#8b5cf6' },
+                                { name: 'Completed', value: dateFilteredCalls.filter(c => c.outcome === 'completed').length, fill: '#22c55e' },
+                                { name: 'Follow Up', value: dateFilteredCalls.filter(c => c.outcome === 'follow_up').length, fill: '#f59e0b' },
+                                { name: 'Not Answered', value: dateFilteredCalls.filter(c => c.outcome === 'not_answered').length, fill: '#6366f1' },
+                                { name: 'Not Interested', value: dateFilteredCalls.filter(c => c.outcome === 'not_interested').length, fill: '#ef4444' },
+                                { name: 'Converted', value: dateFilteredCalls.filter(c => c.outcome === 'converted').length, fill: '#8b5cf6' },
                               ].filter(d => d.value > 0).map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.fill} />
                               ))}
@@ -2322,34 +2569,34 @@ export default function AdminDashboard() {
                         </ResponsiveContainer>
                       </ChartContainer>
                       <div className="mt-3 space-y-1 text-xs">
-                        {calls.filter(c => c.outcome === 'completed').length > 0 && (
+                        {dateFilteredCalls.filter(c => c.outcome === 'completed').length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                            <span className="text-gray-600">Completed ({calls.filter(c => c.outcome === 'completed').length})</span>
+                            <span className="text-gray-600">Completed ({dateFilteredCalls.filter(c => c.outcome === 'completed').length})</span>
                           </div>
                         )}
-                        {calls.filter(c => c.outcome === 'follow_up').length > 0 && (
+                        {dateFilteredCalls.filter(c => c.outcome === 'follow_up').length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                            <span className="text-gray-600">Follow Up ({calls.filter(c => c.outcome === 'follow_up').length})</span>
+                            <span className="text-gray-600">Follow Up ({dateFilteredCalls.filter(c => c.outcome === 'follow_up').length})</span>
                           </div>
                         )}
-                        {calls.filter(c => c.outcome === 'not_answered').length > 0 && (
+                        {dateFilteredCalls.filter(c => c.outcome === 'not_answered').length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
-                            <span className="text-gray-600">Not Answered ({calls.filter(c => c.outcome === 'not_answered').length})</span>
+                            <span className="text-gray-600">Not Answered ({dateFilteredCalls.filter(c => c.outcome === 'not_answered').length})</span>
                           </div>
                         )}
-                        {calls.filter(c => c.outcome === 'not_interested').length > 0 && (
+                        {dateFilteredCalls.filter(c => c.outcome === 'not_interested').length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                            <span className="text-gray-600">Not Interested ({calls.filter(c => c.outcome === 'not_interested').length})</span>
+                            <span className="text-gray-600">Not Interested ({dateFilteredCalls.filter(c => c.outcome === 'not_interested').length})</span>
                           </div>
                         )}
-                        {calls.filter(c => c.outcome === 'converted').length > 0 && (
+                        {dateFilteredCalls.filter(c => c.outcome === 'converted').length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                            <span className="text-gray-600">Converted ({calls.filter(c => c.outcome === 'converted').length})</span>
+                            <span className="text-gray-600">Converted ({dateFilteredCalls.filter(c => c.outcome === 'converted').length})</span>
                           </div>
                         )}
                       </div>
@@ -2367,14 +2614,14 @@ export default function AdminDashboard() {
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-600">High (70%+)</span>
                             <span className="text-xs font-bold text-green-600">
-                              {analyses.filter(a => (a.closure_probability || 0) >= 70).length}
+                              {dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 70).length}
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
                             <div 
                               className="bg-green-500 h-2 rounded-full transition-all"
                               style={{ 
-                                width: `${analyses.length > 0 ? (analyses.filter(a => (a.closure_probability || 0) >= 70).length / analyses.length) * 100 : 0}%` 
+                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 70).length / dateFilteredAnalyses.length) * 100 : 0}%` 
                               }}
                             ></div>
                           </div>
@@ -2384,14 +2631,14 @@ export default function AdminDashboard() {
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-600">Medium (40-69%)</span>
                             <span className="text-xs font-bold text-amber-600">
-                              {analyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length}
+                              {dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length}
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
                             <div 
                               className="bg-amber-500 h-2 rounded-full transition-all"
                               style={{ 
-                                width: `${analyses.length > 0 ? (analyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length / analyses.length) * 100 : 0}%` 
+                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length / dateFilteredAnalyses.length) * 100 : 0}%` 
                               }}
                             ></div>
                           </div>
@@ -2401,14 +2648,14 @@ export default function AdminDashboard() {
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-600">Low (&lt;40%)</span>
                             <span className="text-xs font-bold text-red-600">
-                              {analyses.filter(a => (a.closure_probability || 0) < 40).length}
+                              {dateFilteredAnalyses.filter(a => (a.closure_probability || 0) < 40).length}
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
                             <div 
                               className="bg-red-500 h-2 rounded-full transition-all"
                               style={{ 
-                                width: `${analyses.length > 0 ? (analyses.filter(a => (a.closure_probability || 0) < 40).length / analyses.length) * 100 : 0}%` 
+                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) < 40).length / dateFilteredAnalyses.length) * 100 : 0}%` 
                               }}
                             ></div>
                           </div>
@@ -2504,7 +2751,7 @@ export default function AdminDashboard() {
                         </CardHeader>
                         <CardContent>
                           <div className="text-3xl font-bold text-purple-700 mb-1">
-                            {calls.filter(c => c.outcome === 'converted').length}
+                            {dateFilteredCalls.filter(c => c.outcome === 'converted').length}
                           </div>
                           <p className="text-xs text-gray-600">Closures</p>
                         </CardContent>
@@ -2523,7 +2770,7 @@ export default function AdminDashboard() {
                             {(() => {
                               const totalOpenings = jobs?.reduce((sum: number, j: any) => 
                                 sum + (j.positions_available || 0), 0) || 0;
-                              const filled = calls.filter(c => c.outcome === 'converted').length;
+                              const filled = dateFilteredCalls.filter(c => c.outcome === 'converted').length;
                               return Math.max(0, totalOpenings - filled);
                             })()}
                           </div>
@@ -2560,7 +2807,7 @@ export default function AdminDashboard() {
                             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                             const dayData = dayNames.map((day, index) => {
                               // Get profiles downloaded from employee_daily_productivity table
-                              const dayProfiles = dailyProductivity.filter(p => {
+                              const dayProfiles = dateFilteredDailyProductivity.filter(p => {
                                 const productivityDate = new Date(p.date);
                                 return productivityDate.getDay() === index;
                               });
@@ -2569,7 +2816,7 @@ export default function AdminDashboard() {
                               
                               return {
                                 day: day.substring(0, 3),
-                                calls: calls.filter(c => {
+                                calls: dateFilteredCalls.filter(c => {
                                   const callDate = new Date(c.created_at);
                                   return callDate.getDay() === index;
                                 }).length,
@@ -2617,13 +2864,13 @@ export default function AdminDashboard() {
                       </ChartContainer>
                       <div className="mt-4 grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
                         <div className="text-center">
-                          <p className="text-xs text-gray-500 mb-1">Total Calls This Week</p>
-                          <p className="text-2xl font-bold text-blue-600">{calls.length}</p>
+                          <p className="text-xs text-gray-500 mb-1">Total Calls (Selected Period)</p>
+                          <p className="text-2xl font-bold text-blue-600">{dateFilteredCalls.length}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-xs text-gray-500 mb-1">Total Profiles Downloaded</p>
                           <p className="text-2xl font-bold text-purple-600">
-                            {dailyProductivity.reduce((sum, p) => sum + (p.profiles_downloaded || 0), 0)}
+                            {dateFilteredDailyProductivity.reduce((sum, p) => sum + (p.profiles_downloaded || 0), 0)}
                           </p>
                         </div>
                       </div>
@@ -2638,7 +2885,7 @@ export default function AdminDashboard() {
                       <CardTitle className="text-base font-semibold">Alerts</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {calls.filter(c => c.outcome === 'follow_up').slice(0, 3).map((call, index) => {
+                      {dateFilteredCalls.filter(c => c.outcome === 'follow_up').slice(0, 3).map((call, index) => {
                         const lead = leads.find(l => l.id === call.lead_id);
                         const client = clients?.find((c: any) => c.id === lead?.client_id);
                         return (
@@ -2654,7 +2901,7 @@ export default function AdminDashboard() {
                           </div>
                         );
                       })}
-                      {calls.filter(c => c.outcome === 'follow_up').length === 0 && (
+                      {dateFilteredCalls.filter(c => c.outcome === 'follow_up').length === 0 && (
                         <div className="p-4 text-center text-gray-500">
                           <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
                           <p className="text-sm">All caught up!</p>
@@ -2669,7 +2916,7 @@ export default function AdminDashboard() {
                       <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {calls.slice(0, 5).map((call) => {
+                      {dateFilteredCalls.slice(0, 5).map((call) => {
                         const lead = leads.find(l => l.id === call.lead_id);
                         const employee = employees.find(e => e.user_id === call.employee_id);
                         const timeAgo = (() => {
@@ -2715,8 +2962,8 @@ export default function AdminDashboard() {
                 <CardContent>
                   <div className="grid grid-cols-5 gap-4">
                     {employees.slice(0, 5).map((employee, index) => {
-                      const employeeCalls = calls.filter(c => c.employee_id === employee.user_id);
-                      const employeeAnalyses = analyses.filter(a => a.user_id === employee.user_id);
+                      const employeeCalls = dateFilteredCalls.filter(c => c.employee_id === employee.user_id);
+                      const employeeAnalyses = dateFilteredAnalyses.filter(a => a.user_id === employee.user_id);
                       const avgClosure = employeeAnalyses.length > 0 
                         ? Math.round(employeeAnalyses.reduce((sum, a) => sum + (a.closure_probability || 0), 0) / employeeAnalyses.length)
                         : 0;
@@ -6047,3 +6294,5 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+
