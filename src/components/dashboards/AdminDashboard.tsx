@@ -62,7 +62,9 @@ import {
   ArrowLeft,
   CheckCircle,
   UserCog,
-  Briefcase
+  Briefcase,
+  ChevronRight,
+  Download
 } from "lucide-react";
 
 interface User {
@@ -112,6 +114,7 @@ export default function AdminDashboard() {
   const [leadGroups, setLeadGroups] = useState<any[]>([]);
   const [calls, setCalls] = useState<any[]>([]);
   const [analyses, setAnalyses] = useState<any[]>([]);
+  const [dailyProductivity, setDailyProductivity] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSidebarItem, setActiveSidebarItem] = useState('overview');
   const [isViewingGroupPage, setIsViewingGroupPage] = useState(false);
@@ -166,6 +169,7 @@ export default function AdminDashboard() {
   }>({ email: false, password: false });
   const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>('all');
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
+  const [selectedManager, setSelectedManager] = useState<Manager | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showEmployeePassword, setShowEmployeePassword] = useState(false);
   const [showUserDetailsPassword, setShowUserDetailsPassword] = useState(false);
@@ -479,6 +483,20 @@ export default function AdminDashboard() {
       } else {
         setCalls(callsData || []);
         console.log('Fetched calls:', callsData);
+      }
+
+      // Fetch employee daily productivity data
+      const { data: productivityData, error: productivityError } = await supabase
+        .from('employee_daily_productivity')
+        .select('*')
+        .eq('company_id', userRole.company_id)
+        .order('date', { ascending: false });
+
+      if (productivityError) {
+        console.error('Error fetching productivity data:', productivityError);
+      } else {
+        setDailyProductivity(productivityData || []);
+        console.log('Fetched daily productivity:', productivityData);
       }
 
       // Fetch all analyses for this company (via user_id from employees)
@@ -1921,6 +1939,13 @@ export default function AdminDashboard() {
     return matchesSearch && matchesEmployee && matchesProbability;
   });
 
+  // Set first manager as selected by default
+  useEffect(() => {
+    if (managers.length > 0 && !selectedManager) {
+      setSelectedManager(managers[0]);
+    }
+  }, [managers, selectedManager]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1932,58 +1957,62 @@ export default function AdminDashboard() {
     );
   }
 
+  // Calculate manager stats
+  const getManagerStats = (manager: Manager) => {
+    const managerEmployees = employees.filter(e => e.manager_id === manager.id);
+    const totalCalls = calls.filter(c => 
+      managerEmployees.some(e => e.user_id === c.employee_id)
+    ).length;
+    
+    const totalCallDurations = calls
+      .filter(c => managerEmployees.some(e => e.user_id === c.employee_id))
+      .reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
+    
+    const avgDuration = totalCalls > 0 ? totalCallDurations / totalCalls : 0;
+    const avgMinutes = Math.floor(avgDuration / 60);
+    const avgSeconds = Math.floor(avgDuration % 60);
+
+    // Calculate closure probability from analyses
+    const managerAnalyses = analyses.filter(a => 
+      managerEmployees.some(e => e.user_id === a.user_id)
+    );
+    const avgClosureProbability = managerAnalyses.length > 0 
+      ? managerAnalyses.reduce((sum, a) => sum + (a.closure_probability || 0), 0) / managerAnalyses.length
+      : 0;
+
+    return {
+      calls: totalCalls,
+      avgCallDuration: `${avgMinutes}m ${avgSeconds}s`,
+      closureProbability: Math.round(avgClosureProbability),
+      employeeCount: managerEmployees.length
+    };
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card px-6 py-4 shadow-md">
+      <header className="border-b bg-white px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <img 
-              src="/logo.png" 
-              alt="Tasknova" 
-              className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
-            />
-            <div className="border-l-2 border-blue-500/30 pl-4">
-              <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                  Admin Dashboard
-                  <Badge className="bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none font-semibold px-2.5 py-0.5 text-xs shadow-md">
-                    <Shield className="h-3 w-3 mr-1" />
-                    ADMIN
-                  </Badge>
-                </h1>
-              </div>
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-lg">👋</span>
-                  <span className="font-semibold text-foreground">{user?.user_metadata?.full_name || 'Admin'}</span>
-                </span>
-                <span className="text-blue-500">•</span>
-                <span className="flex items-center gap-1.5">
-                  <Building className="h-3.5 w-3.5 text-blue-500" />
-                  <span className="font-medium">{company?.name}</span>
-                </span>
-              </p>
-            </div>
+            <h1 className="text-xl font-bold text-foreground">Admin Dashboard</h1>
+            <Badge className="bg-blue-500 text-white">
+              <Shield className="h-3 w-3 mr-1" />
+              ADMIN
+            </Badge>
           </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
-              onClick={() => setActiveSidebarItem('settings')}
-            >
-              <Settings className="h-5 w-5" />
-            </Button>
-            <div className="h-8 w-px bg-gradient-to-b from-transparent via-border to-transparent"></div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{user?.user_metadata?.full_name || 'Aarav Varma'}</span>
+              <span className="text-muted-foreground">•</span>
+              <Building className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">{company?.name || 'Tasknova'}</span>
+            </div>
             <Button
               variant="outline"
               size="sm"
               onClick={handleSignOut}
-              className="flex items-center gap-2 font-medium border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all"
+              className="flex items-center gap-2 text-red-600 hover:bg-red-50"
             >
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -1992,16 +2021,16 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      <div className="flex">
+      <div className="flex h-[calc(100vh-57px)]">
         {/* Sidebar */}
-        <aside className="w-64 border-r bg-card p-6">
-          <nav className="space-y-2">
+        <aside className="w-56 border-r bg-white p-4">
+          <nav className="space-y-1">
             <Button 
-              variant={activeSidebarItem === 'overview' ? 'accent' : 'ghost'} 
-              className="w-full justify-start"
+              variant={activeSidebarItem === 'overview' ? 'default' : 'ghost'} 
+              className="w-full justify-start text-sm"
               onClick={() => setActiveSidebarItem('overview')}
             >
-              <Building className="h-4 w-4" />
+              <Building className="h-4 w-4 mr-2" />
               Overview
             </Button>
             <Button 
@@ -2095,512 +2124,626 @@ export default function AdminDashboard() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 bg-gray-50 overflow-y-auto">
           {activeSidebarItem === 'overview' && (
-            <>
-              {/* Company Overview Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card className="border-l-4 border-l-cyan-500 bg-gradient-to-br from-cyan-50 to-cyan-100/50 dark:from-cyan-950/20 dark:to-cyan-900/10">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
-                <Users className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">{managers.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active managers
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-pink-500 bg-gradient-to-br from-pink-50 to-pink-100/50 dark:from-pink-950/20 dark:to-pink-900/10">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-                <UserPlus className="h-4 w-4 text-pink-600 dark:text-pink-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">{employees.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active employees
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-950/20 dark:to-rose-900/10">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                    <Phone className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-              </CardHeader>
-              <CardContent>
-                    <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">{leads.length}</div>
-                <p className="text-xs text-muted-foreground">
-                      All time leads
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-l-4 border-l-violet-500 bg-gradient-to-br from-violet-50 to-violet-100/50 dark:from-violet-950/20 dark:to-violet-900/10">
+            <div className="space-y-6">
+              {/* Top Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="bg-white shadow-sm">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
-                    <PhoneCall className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Managers</CardTitle>
+                    <Users className="h-5 w-5 text-blue-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-violet-600 dark:text-violet-400">{calls.length}</div>
-                    <p className="text-xs text-muted-foreground">
-                      All time calls
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+                    <div className="text-3xl font-bold">{managers.length}</div>
+                  </CardContent>
+                </Card>
 
-              {/* Team Call Quality Stats */}
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold mb-4">Team Call Quality Stats</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <Card className="border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Avg Sentiment</CardTitle>
-                      <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                        {analyses.length > 0 
-                          ? Math.round(analyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / analyses.length)
-                          : 0}%
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Average sentiment score
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/20 dark:to-purple-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Avg Engagement</CardTitle>
-                      <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                        {analyses.length > 0 
-                          ? Math.round(analyses.reduce((sum, a) => sum + (a.engagement_score || 0), 0) / analyses.length)
-                          : 0}%
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Average engagement score
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-l-4 border-l-green-500 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Avg Confidence</CardTitle>
-                      <Shield className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                        {analyses.length > 0 
-                          ? `${Math.round(analyses.reduce((sum, a) => sum + ((a.confidence_score_executive + a.confidence_score_person) / 2 || 0), 0) / analyses.length)}/10`
-                          : '0/10'}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Average confidence score
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-l-4 border-l-orange-500 bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/20 dark:to-orange-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Completed Analyses</CardTitle>
-                      <Check className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                        {analyses.filter(a => a.status?.toLowerCase() === 'completed').length}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Out of {analyses.length} total
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-
-              {/* Lead Management Stats */}
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold mb-4">Lead Management Stats</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <Card className="border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/20 dark:to-indigo-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                      <Phone className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{leads.length}</div>
-                      <p className="text-xs text-muted-foreground">
-                        All leads in system
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-l-4 border-l-teal-500 bg-gradient-to-br from-teal-50 to-teal-100/50 dark:from-teal-950/20 dark:to-teal-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Called Leads</CardTitle>
-                      <PhoneCall className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">
-                        {[...new Set(calls.map(call => call.lead_id))].length}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Unique leads called
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Pending Calls</CardTitle>
-                      <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                        {leads.length - [...new Set(calls.map(call => call.lead_id))].length}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Leads not yet called
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-                      <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                        {leads.length > 0 
-                          ? Math.round((leads.filter(lead => lead.status === 'converted').length / leads.length) * 100)
-                          : 0}%
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Lead to customer rate
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-
-              {/* Visual Graphs Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                {/* Call Outcomes Distribution - Pie Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Call Outcomes Distribution</CardTitle>
-                    <CardDescription>Breakdown of call results</CardDescription>
+                <Card className="bg-white shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Employees</CardTitle>
+                    <UserPlus className="h-5 w-5 text-red-500" />
                   </CardHeader>
                   <CardContent>
-                    {calls.length === 0 ? (
-                      <div className="text-center py-8">
-                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                        <p className="text-muted-foreground">No calls data available</p>
-                      </div>
-                    ) : (
-                      <ChartContainer
-                        config={{
-                          completed: { label: "Completed", color: "#0088FE" },
-                          follow_up: { label: "Follow-up", color: "#00C49F" },
-                          not_answered: { label: "Not Answered", color: "#FFBB28" },
-                          not_interested: { label: "Not Interested", color: "#FF8042" },
-                          converted: { label: "Converted", color: "#8884d8" },
-                        }}
-                        className="h-[300px]"
-                      >
-                        <PieChart>
-                          <ChartTooltip content={<ChartTooltipContent />} />
-                          <Pie
-                            data={(() => {
-                              const outcomeCounts: { [key: string]: number } = {};
-                              calls.forEach(call => {
-                                const outcome = call.outcome || 'unknown';
-                                outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
-                              });
-                              const colors: { [key: string]: string } = {
-                                completed: '#0088FE',
-                                follow_up: '#00C49F',
-                                not_answered: '#FFBB28',
-                                not_interested: '#FF8042',
-                                converted: '#8884d8',
-                                unknown: '#888888',
-                              };
-                              return Object.entries(outcomeCounts).map(([name, value]) => ({
-                                name: name.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
-                                value,
-                                fill: colors[name] || colors.unknown,
-                              }));
-                            })()}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
+                    <div className="text-3xl font-bold">{employees.length}</div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Leads</CardTitle>
+                    <Phone className="h-5 w-5 text-pink-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{leads.length}</div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Calls</CardTitle>
+                    <PhoneCall className="h-5 w-5 text-violet-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{calls.length < 1000 ? calls.length : `${(calls.length / 1000).toFixed(1)}k`}</div>
+                    <div className="flex items-center mt-1">
+                      <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+                      <span className="text-xs font-medium text-green-500">Good</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Additional Stats Row */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Success Rate</CardTitle>
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-700">
+                      {calls.length > 0 
+                        ? Math.round((analyses.filter(a => (a.closure_probability || 0) >= 70).length / analyses.length) * 100) || 0
+                        : 0}%
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">High probability closures</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Avg Call Duration</CardTitle>
+                    <Clock className="h-5 w-5 text-purple-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-purple-700">
+                      {calls.length > 0 
+                        ? `${Math.floor(calls.reduce((sum, c) => sum + (c.exotel_duration || 0), 0) / calls.length / 60)}m`
+                        : '0m'}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">Across all calls</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Active Clients</CardTitle>
+                    <Building className="h-5 w-5 text-orange-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-700">{clients?.length || 0}</div>
+                    <p className="text-xs text-gray-600 mt-1">Organizations served</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Total Jobs</CardTitle>
+                    <Briefcase className="h-5 w-5 text-cyan-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-cyan-700">{jobs?.length || 0}</div>
+                    <p className="text-xs text-gray-600 mt-1">Job postings</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200 shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Lead Groups</CardTitle>
+                    <Users className="h-5 w-5 text-yellow-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-yellow-700">{leadGroups.length}</div>
+                    <p className="text-xs text-gray-600 mt-1">Organized groups</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Main Content Grid */}
+              <div className="grid grid-cols-12 gap-6">
+                {/* Left Column - Manager Leaderboard */}
+                <div className="col-span-3 space-y-4">
+                  <Card className="bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold">Manager Leaderboard</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {managers.map((manager) => {
+                        const stats = getManagerStats(manager);
+                        const isSelected = selectedManager?.id === manager.id;
+                        return (
+                          <button
+                            key={manager.id}
+                            onClick={() => setSelectedManager(manager)}
+                            className={`w-full p-3 rounded-lg text-left transition-all ${
+                              isSelected 
+                                ? 'bg-blue-50 border border-blue-200' 
+                                : 'bg-white border border-gray-100 hover:bg-gray-50'
+                            }`}
                           >
-                            {(() => {
-                              const outcomeCounts: { [key: string]: number } = {};
-                              calls.forEach(call => {
-                                const outcome = call.outcome || 'unknown';
-                                outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
-                              });
-                              const colors: { [key: string]: string } = {
-                                completed: '#0088FE',
-                                follow_up: '#00C49F',
-                                not_answered: '#FFBB28',
-                                not_interested: '#FF8042',
-                                converted: '#8884d8',
-                                unknown: '#888888',
-                              };
-                              return Object.entries(outcomeCounts).map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={colors[entry[0]] || colors.unknown} />
-                              ));
-                            })()}
-                          </Pie>
-                        </PieChart>
-                      </ChartContainer>
-                    )}
-                  </CardContent>
-                </Card>
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-blue-500" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{manager.profile?.full_name}</p>
+                                <p className="text-xs text-gray-500 truncate">{manager.profile?.email}</p>
+                              </div>
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
 
-                {/* Calls by Day of Week - Bar Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Calls by Day of Week</CardTitle>
-                    <CardDescription>Call activity patterns throughout the week</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {calls.length === 0 ? (
-                      <div className="text-center py-8">
-                        <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                        <p className="text-muted-foreground">No calls data available</p>
+                  {/* Call Outcome Distribution */}
+                  <Card className="bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-sm font-semibold">Call Outcomes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer config={{
+                        completed: { label: "Completed", color: "#22c55e" },
+                        follow_up: { label: "Follow Up", color: "#f59e0b" },
+                        not_answered: { label: "Not Answered", color: "#6366f1" },
+                        not_interested: { label: "Not Interested", color: "#ef4444" },
+                        converted: { label: "Converted", color: "#8b5cf6" },
+                      }} className="h-[200px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Completed', value: calls.filter(c => c.outcome === 'completed').length, fill: '#22c55e' },
+                                { name: 'Follow Up', value: calls.filter(c => c.outcome === 'follow_up').length, fill: '#f59e0b' },
+                                { name: 'Not Answered', value: calls.filter(c => c.outcome === 'not_answered').length, fill: '#6366f1' },
+                                { name: 'Not Interested', value: calls.filter(c => c.outcome === 'not_interested').length, fill: '#ef4444' },
+                                { name: 'Converted', value: calls.filter(c => c.outcome === 'converted').length, fill: '#8b5cf6' },
+                              ].filter(d => d.value > 0)}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={40}
+                              outerRadius={70}
+                              paddingAngle={2}
+                              dataKey="value"
+                              label={(entry) => `${entry.value}`}
+                            >
+                              {[
+                                { name: 'Completed', value: calls.filter(c => c.outcome === 'completed').length, fill: '#22c55e' },
+                                { name: 'Follow Up', value: calls.filter(c => c.outcome === 'follow_up').length, fill: '#f59e0b' },
+                                { name: 'Not Answered', value: calls.filter(c => c.outcome === 'not_answered').length, fill: '#6366f1' },
+                                { name: 'Not Interested', value: calls.filter(c => c.outcome === 'not_interested').length, fill: '#ef4444' },
+                                { name: 'Converted', value: calls.filter(c => c.outcome === 'converted').length, fill: '#8b5cf6' },
+                              ].filter(d => d.value > 0).map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))}
+                            </Pie>
+                            <ChartTooltip content={<ChartTooltipContent />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                      <div className="mt-3 space-y-1 text-xs">
+                        {calls.filter(c => c.outcome === 'completed').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                            <span className="text-gray-600">Completed ({calls.filter(c => c.outcome === 'completed').length})</span>
+                          </div>
+                        )}
+                        {calls.filter(c => c.outcome === 'follow_up').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                            <span className="text-gray-600">Follow Up ({calls.filter(c => c.outcome === 'follow_up').length})</span>
+                          </div>
+                        )}
+                        {calls.filter(c => c.outcome === 'not_answered').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                            <span className="text-gray-600">Not Answered ({calls.filter(c => c.outcome === 'not_answered').length})</span>
+                          </div>
+                        )}
+                        {calls.filter(c => c.outcome === 'not_interested').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                            <span className="text-gray-600">Not Interested ({calls.filter(c => c.outcome === 'not_interested').length})</span>
+                          </div>
+                        )}
+                        {calls.filter(c => c.outcome === 'converted').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                            <span className="text-gray-600">Converted ({calls.filter(c => c.outcome === 'converted').length})</span>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <ChartContainer
-                        config={{
-                          calls: { label: "Calls", color: "hsl(var(--chart-1))" },
-                        }}
-                        className="h-[300px]"
-                      >
-                        <BarChart data={(() => {
-                          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                          const dayColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE'];
-                          const dayCounts: { [key: number]: number } = {};
-                          
-                          calls.forEach(call => {
-                            const callDate = new Date(call.created_at);
-                            const dayOfWeek = callDate.getDay();
-                            dayCounts[dayOfWeek] = (dayCounts[dayOfWeek] || 0) + 1;
-                          });
-                          
-                          return dayNames.map((dayName, index) => ({
-                            day: dayName.substring(0, 3), // Short form: Sun, Mon, etc.
-                            calls: dayCounts[index] || 0,
-                            color: dayColors[index],
-                          }));
-                        })()}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="day" />
-                          <YAxis />
-                          <ChartTooltip content={<ChartTooltipContent />} />
-                          <Bar dataKey="calls" radius={[8, 8, 0, 0]}>
+                    </CardContent>
+                  </Card>
+
+                  {/* Closure Probability Distribution */}
+                  <Card className="bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-sm font-semibold">Closure Distribution</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-gray-600">High (70%+)</span>
+                            <span className="text-xs font-bold text-green-600">
+                              {analyses.filter(a => (a.closure_probability || 0) >= 70).length}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div 
+                              className="bg-green-500 h-2 rounded-full transition-all"
+                              style={{ 
+                                width: `${analyses.length > 0 ? (analyses.filter(a => (a.closure_probability || 0) >= 70).length / analyses.length) * 100 : 0}%` 
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-gray-600">Medium (40-69%)</span>
+                            <span className="text-xs font-bold text-amber-600">
+                              {analyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div 
+                              className="bg-amber-500 h-2 rounded-full transition-all"
+                              style={{ 
+                                width: `${analyses.length > 0 ? (analyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length / analyses.length) * 100 : 0}%` 
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-gray-600">Low (&lt;40%)</span>
+                            <span className="text-xs font-bold text-red-600">
+                              {analyses.filter(a => (a.closure_probability || 0) < 40).length}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div 
+                              className="bg-red-500 h-2 rounded-full transition-all"
+                              style={{ 
+                                width: `${analyses.length > 0 ? (analyses.filter(a => (a.closure_probability || 0) < 40).length / analyses.length) * 100 : 0}%` 
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Middle Column - Selected Manager Details + Teams */}
+                <div className="col-span-6 space-y-6">
+                  {/* Selected Manager Card */}
+                  {selectedManager && (
+                    <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+                      <CardHeader>
+                        <div className="flex items-center gap-3">
+                          <User className="h-6 w-6" />
+                          <div className="flex-1">
+                            <CardTitle className="text-white">{selectedManager.profile?.full_name || 'Manager 2'}</CardTitle>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-blue-100 text-xs mb-1">Calls</p>
+                            <p className="text-2xl font-bold">{getManagerStats(selectedManager).calls}</p>
+                          </div>
+                          <div>
+                            <p className="text-blue-100 text-xs mb-1">Avg Call Duration</p>
+                            <p className="text-2xl font-bold">{getManagerStats(selectedManager).avgCallDuration}</p>
+                          </div>
+                          <div>
+                            <p className="text-blue-100 text-xs mb-1">Closure Probability</p>
+                            <p className="text-2xl font-bold">{getManagerStats(selectedManager).closureProbability}%</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Recruitment Metrics Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold">Recruitment Overview</h3>
+                      <Button variant="ghost" size="sm">
+                        <Download className="h-4 w-4 mr-2" />
+                        Export
+                      </Button>
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-4">
+                      {/* Active Clients */}
+                      <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-2">
+                            <Building className="h-5 w-5 text-blue-600" />
+                            <CardTitle className="text-sm font-semibold text-gray-700">Active Clients</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold text-blue-700 mb-1">
+                            {clients?.filter((c: any) => c.is_active).length || 0}
+                          </div>
+                          <p className="text-xs text-gray-600">Organizations</p>
+                        </CardContent>
+                      </Card>
+
+                      {/* Active Openings */}
+                      <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-2">
+                            <Briefcase className="h-5 w-5 text-green-600" />
+                            <CardTitle className="text-sm font-semibold text-gray-700">Total Openings</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold text-green-700 mb-1">
+                            {jobs?.reduce((sum: number, j: any) => 
+                              sum + (j.positions_available || 0), 0) || 0}
+                          </div>
+                          <p className="text-xs text-gray-600">Available positions</p>
+                        </CardContent>
+                      </Card>
+
+                      {/* Filled Positions */}
+                      <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-purple-600" />
+                            <CardTitle className="text-sm font-semibold text-gray-700">Filled</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold text-purple-700 mb-1">
+                            {calls.filter(c => c.outcome === 'converted').length}
+                          </div>
+                          <p className="text-xs text-gray-600">Closures</p>
+                        </CardContent>
+                      </Card>
+
+                      {/* Remaining Openings */}
+                      <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-5 w-5 text-amber-600" />
+                            <CardTitle className="text-sm font-semibold text-gray-700">Remaining</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold text-amber-700 mb-1">
                             {(() => {
-                              const dayColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE'];
-                              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                              const dayCounts: { [key: number]: number } = {};
-                              
-                              calls.forEach(call => {
-                                const callDate = new Date(call.created_at);
-                                const dayOfWeek = callDate.getDay();
-                                dayCounts[dayOfWeek] = (dayCounts[dayOfWeek] || 0) + 1;
+                              const totalOpenings = jobs?.reduce((sum: number, j: any) => 
+                                sum + (j.positions_available || 0), 0) || 0;
+                              const filled = calls.filter(c => c.outcome === 'converted').length;
+                              return Math.max(0, totalOpenings - filled);
+                            })()}
+                          </div>
+                          <p className="text-xs text-gray-600">To be filled</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+
+                  {/* Weekly Call Trend with Profile Downloads Comparison */}
+                  <Card className="bg-white shadow-sm">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base font-semibold">Calls vs Profile Downloads by Day</CardTitle>
+                        <div className="flex items-center gap-3 text-xs">
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-blue-500"></div>
+                            <span className="text-gray-600">Calls</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded bg-purple-500"></div>
+                            <span className="text-gray-600">Profiles</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer config={{
+                        calls: { label: "Calls", color: "#3b82f6" },
+                        profiles: { label: "Profile Downloads", color: "#8b5cf6" }
+                      }} className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={(() => {
+                            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                            const dayData = dayNames.map((day, index) => {
+                              // Get profiles downloaded from employee_daily_productivity table
+                              const dayProfiles = dailyProductivity.filter(p => {
+                                const productivityDate = new Date(p.date);
+                                return productivityDate.getDay() === index;
                               });
                               
-                              return dayNames.map((dayName, index) => (
-                                <Cell key={`cell-${index}`} fill={dayColors[index]} />
-                              ));
-                            })()}
-                          </Bar>
-                        </BarChart>
+                              const totalProfiles = dayProfiles.reduce((sum, p) => sum + (p.profiles_downloaded || 0), 0);
+                              
+                              return {
+                                day: day.substring(0, 3),
+                                calls: calls.filter(c => {
+                                  const callDate = new Date(c.created_at);
+                                  return callDate.getDay() === index;
+                                }).length,
+                                profiles: totalProfiles
+                              };
+                            });
+                            return dayData;
+                          })()} barGap={4}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis 
+                              dataKey="day" 
+                              tick={{ fontSize: 12 }}
+                              axisLine={{ stroke: '#d1d5db' }}
+                            />
+                            <YAxis 
+                              tick={{ fontSize: 12 }}
+                              axisLine={{ stroke: '#d1d5db' }}
+                            />
+                            <ChartTooltip 
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div className="bg-white p-3 shadow-lg rounded-lg border border-gray-200">
+                                      <p className="font-semibold text-sm mb-2">{payload[0].payload.day}</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs flex items-center gap-2">
+                                          <span className="w-3 h-3 rounded bg-blue-500"></span>
+                                          <span>Calls: <strong>{payload[0].value}</strong></span>
+                                        </p>
+                                        <p className="text-xs flex items-center gap-2">
+                                          <span className="w-3 h-3 rounded bg-purple-500"></span>
+                                          <span>Profiles: <strong>{payload[1].value}</strong></span>
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Bar dataKey="calls" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                            <Bar dataKey="profiles" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
                       </ChartContainer>
-                    )}
-                  </CardContent>
-                </Card>
+                      <div className="mt-4 grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 mb-1">Total Calls This Week</p>
+                          <p className="text-2xl font-bold text-blue-600">{calls.length}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 mb-1">Total Profiles Downloaded</p>
+                          <p className="text-2xl font-bold text-purple-600">
+                            {dailyProductivity.reduce((sum, p) => sum + (p.profiles_downloaded || 0), 0)}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Right Column - Alerts and More Stats */}
+                <div className="col-span-3 space-y-4">
+                  <Card className="bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold">Alerts</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {calls.filter(c => c.outcome === 'follow_up').slice(0, 3).map((call, index) => {
+                        const lead = leads.find(l => l.id === call.lead_id);
+                        const client = clients?.find((c: any) => c.id === lead?.client_id);
+                        return (
+                          <div key={call.id} className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{lead?.name || 'Unknown Lead'}</p>
+                                <p className="text-xs text-gray-600 truncate">{client?.name || 'No client'}</p>
+                                <p className="text-xs text-amber-600 mt-1">Requires follow-up</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {calls.filter(c => c.outcome === 'follow_up').length === 0 && (
+                        <div className="p-4 text-center text-gray-500">
+                          <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                          <p className="text-sm">All caught up!</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Recent Activity */}
+                  <Card className="bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {calls.slice(0, 5).map((call) => {
+                        const lead = leads.find(l => l.id === call.lead_id);
+                        const employee = employees.find(e => e.user_id === call.employee_id);
+                        const timeAgo = (() => {
+                          const diff = Date.now() - new Date(call.created_at).getTime();
+                          const minutes = Math.floor(diff / 60000);
+                          const hours = Math.floor(minutes / 60);
+                          const days = Math.floor(hours / 24);
+                          if (days > 0) return `${days}d ago`;
+                          if (hours > 0) return `${hours}h ago`;
+                          return `${minutes}m ago`;
+                        })();
+                        
+                        return (
+                          <div key={call.id} className="flex items-start gap-2 text-xs">
+                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+                              call.outcome === 'completed' ? 'bg-green-500' :
+                              call.outcome === 'follow_up' ? 'bg-amber-500' :
+                              call.outcome === 'converted' ? 'bg-purple-500' :
+                              call.outcome === 'not_interested' ? 'bg-red-500' :
+                              'bg-gray-400'
+                            }`}></div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-gray-900 font-medium truncate">
+                                {employee?.profile?.full_name || 'Employee'} called {lead?.name || 'lead'}
+                              </p>
+                              <p className="text-gray-500">{timeAgo}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+
+
+                </div>
               </div>
 
-          {/* Search */}
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search users..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+              {/* Top Performers - Full Width */}
+              <Card className="bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold">Top Performers This Month</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-5 gap-4">
+                    {employees.slice(0, 5).map((employee, index) => {
+                      const employeeCalls = calls.filter(c => c.employee_id === employee.user_id);
+                      const employeeAnalyses = analyses.filter(a => a.user_id === employee.user_id);
+                      const avgClosure = employeeAnalyses.length > 0 
+                        ? Math.round(employeeAnalyses.reduce((sum, a) => sum + (a.closure_probability || 0), 0) / employeeAnalyses.length)
+                        : 0;
+                      const manager = managers.find(m => m.id === employee.manager_id);
+                      
+                      return (
+                        <div key={employee.id} className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg hover:shadow-md transition-all">
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-500 text-white font-bold text-lg mb-3 mx-auto">
+                            {index + 1}
+                          </div>
+                          <div className="text-center">
+                            <p className="font-semibold text-sm mb-1 truncate">{employee.profile?.full_name || employee.email}</p>
+                            <p className="text-xs text-gray-600 mb-3 truncate">Under {manager?.profile?.full_name || 'N/A'}</p>
+                            <div className="pt-3 border-t border-blue-200">
+                              <p className="text-2xl font-bold text-blue-600 mb-1">{employeeCalls.length}</p>
+                              <p className="text-xs text-gray-500 mb-2">Total Calls</p>
+                              <p className="text-lg font-semibold text-green-600">{avgClosure}%</p>
+                              <p className="text-xs text-gray-500">Avg Closure</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-
-          {/* Managers Section */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Managers ({filteredManagers.length})
-              </CardTitle>
-              <CardDescription>
-                Team leaders who manage employees and assign leads
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredManagers.length === 0 ? (
-                <div className="text-center py-8">
-                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No managers found</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredManagers.map((manager) => (
-                    <div key={manager.user_id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                          <Users className="h-5 w-5 text-green-500" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}</h4>
-                          <p className="text-sm text-muted-foreground">{manager.profile?.email || `ID: ${manager.user_id}`}</p>
-                          {!manager.profile?.full_name && (
-                            <p className="text-xs text-orange-600">Profile data missing - please update user</p>
-                          )}
-                          {manager.profile?.department && (
-                            <p className="text-xs text-blue-600 font-medium">{manager.profile.department}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {manager.employees.length} employee{manager.employees.length !== 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="secondary">Manager</Badge>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewUser(manager)}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditUserClick(manager)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleShowCredentials(manager)}>
-                              <Shield className="h-4 w-4 mr-2" />
-                              View Credentials
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteUserClick(manager)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Employees Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5" />
-                Employees ({filteredEmployees.length})
-              </CardTitle>
-              <CardDescription>
-                Team members who handle assigned leads and make calls
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredEmployees.length === 0 ? (
-                <div className="text-center py-8">
-                  <UserPlus className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No employees found</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredEmployees.map((employee) => (
-                    <div key={employee.user_id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                          <UserPlus className="h-5 w-5 text-purple-500" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{employee.profile?.full_name || `Employee ${employee.user_id.slice(0, 8)}`}</h4>
-                          <p className="text-sm text-muted-foreground">{employee.profile?.email || `ID: ${employee.user_id}`}</p>
-                          {!employee.profile?.full_name && (
-                            <p className="text-xs text-orange-600">Profile data missing - please update user</p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            Managed by: {managers.find(m => m.id === employee.manager_id)?.profile?.full_name || 
-                                       managers.find(m => m.id === employee.manager_id)?.user_id?.slice(0, 8) || 'Unknown'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="outline">Employee</Badge>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewUser(employee)}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditUserClick(employee)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleShowCredentials(employee)}>
-                              <Shield className="h-4 w-4 mr-2" />
-                              View Credentials
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteUserClick(employee)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-            </>
           )}
 
           {activeSidebarItem === 'managers' && (
